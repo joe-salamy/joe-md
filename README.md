@@ -196,8 +196,7 @@ that are already open.
 The filter matches as you type. That is safe here, unlike searching file
 contents, because it only compares the names in one directory. Space-separated
 words must all appear in the name, ignoring case. While filtering, `↑` `↓`
-(or `ctrl+p` `ctrl+n`) move the selection and the search bar's line-editing
-keys work.
+move the selection and the search bar's line-editing keys work.
 
 Click an entry to open it, click outside the menu to close it, and scroll
 with the wheel.
@@ -226,7 +225,7 @@ rendered text happens in the background too.
 | `ctrl+a` `ctrl+e`            | start / end of line                 |
 | `ctrl+h` `ctrl+d`            | delete backwards / forwards         |
 | `alt+b` `alt+f`              | word left / right                   |
-| `ctrl+p` `ctrl+n` (`↑` `↓`)  | previous / next search in history   |
+| `↑` `↓`                      | previous / next search in history   |
 
 Scopes: **file** is the open file; **dir** is its directory, recursively;
 **repo** is the enclosing git repository (the nearest `.git`), or the directory

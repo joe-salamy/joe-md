@@ -48,6 +48,17 @@ func (km *Keymap) helpText(width int, th theme) []string {
 			out = append(out, "")
 		}
 		out = append(out, th.menuTitle.Render(" "+g))
+		row := func(keys, desc string) {
+			d := th.bar.Render(desc)
+			if w := ansi.StringWidth(keys); w <= keyW {
+				out = append(out, "   "+th.barPrompt.Render(keys)+strings.Repeat(" ", keyW-w+2)+d)
+				return
+			}
+			for _, l := range strings.Split(ansi.Wordwrap(keys, width-3, " "), "\n") {
+				out = append(out, "   "+th.barPrompt.Render(l))
+			}
+			out = append(out, "   "+strings.Repeat(" ", keyW+2)+d)
+		}
 		for _, x := range actions {
 			if x.group != g {
 				continue
@@ -56,16 +67,10 @@ func (km *Keymap) helpText(width int, th theme) []string {
 			if len(ks) == 0 {
 				ks = []string{"(unbound)"}
 			}
-			keys := strings.Join(ks, " ")
-			desc := th.bar.Render(x.desc)
-			if w := ansi.StringWidth(keys); w <= keyW {
-				out = append(out, "   "+th.barPrompt.Render(keys)+strings.Repeat(" ", keyW-w+2)+desc)
-				continue
-			}
-			for _, l := range strings.Split(ansi.Wordwrap(keys, width-3, " "), "\n") {
-				out = append(out, "   "+th.barPrompt.Render(l))
-			}
-			out = append(out, "   "+strings.Repeat(" ", keyW+2)+desc)
+			row(strings.Join(ks, " "), x.desc)
+		}
+		for _, f := range fixedKeys[g] {
+			row(f.keys, f.desc)
 		}
 		if n := groupNotes[g]; n != "" {
 			n = strings.NewReplacer("`", "", "*", "").Replace(n)

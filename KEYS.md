@@ -11,18 +11,18 @@ explains each feature.
 
 ## Scrolling
 
-| Key                                  | Action                   | Name                    |
-|--------------------------------------|--------------------------|-------------------------|
-| `j` `down` `ctrl+e` `ctrl+n` `enter` | one line down            | `normal.scroll_down`    |
-| `k` `up` `ctrl+y` `ctrl+p`           | one line up              | `normal.scroll_up`      |
-| `ctrl+d`                             | half a page down         | `normal.half_page_down` |
-| `ctrl+u`                             | half a page up           | `normal.half_page_up`   |
-| `ctrl+f` `pgdown` `space` `f`        | a page down              | `normal.page_down`      |
-| `ctrl+b` `pgup` `b`                  | a page up                | `normal.page_up`        |
-| `gg` `home`                          | top, or source line n    | `normal.top`            |
-| `G` `end`                            | bottom, or source line n | `normal.bottom`         |
-| `]]` `}`                             | next heading             | `normal.next_heading`   |
-| `[[` `{`                             | previous heading         | `normal.prev_heading`   |
+| Key                           | Action                   | Name                    |
+|-------------------------------|--------------------------|-------------------------|
+| `j` `down`                    | one line down            | `normal.scroll_down`    |
+| `k` `up`                      | one line up              | `normal.scroll_up`      |
+| `ctrl+d`                      | half a page down         | `normal.half_page_down` |
+| `ctrl+u`                      | half a page up           | `normal.half_page_up`   |
+| `ctrl+f` `pgdown` `space` `f` | a page down              | `normal.page_down`      |
+| `ctrl+b` `pgup` `b`           | a page up                | `normal.page_up`        |
+| `gg` `home`                   | top, or source line n    | `normal.top`            |
+| `G` `end`                     | bottom, or source line n | `normal.bottom`         |
+| `]]` `}`                      | next heading             | `normal.next_heading`   |
+| `[[` `{`                      | previous heading         | `normal.prev_heading`   |
 
 `{n}gg` and `{n}G` go to source line *n*.
 
@@ -50,71 +50,76 @@ explains each feature.
 
 ## Search bar
 
-| Key             | Action                                 | Name                    |
-|-----------------|----------------------------------------|-------------------------|
-| `enter`         | search (empty repeats the last search) | `search.submit`         |
-| `esc`           | cancel                                 | `search.cancel`         |
-| `ctrl+c`        | clear the input (again to cancel)      | `search.clear`          |
-| `tab`           | next scope: file → dir → repo          | `search.scope_next`     |
-| `shift+tab`     | previous scope                         | `search.scope_prev`     |
-| `ctrl+r`        | regex / literal text                   | `search.toggle_literal` |
-| `up` `ctrl+p`   | previous search in history             | `search.history_prev`   |
-| `down` `ctrl+n` | next search in history                 | `search.history_next`   |
-
-Other keys edit the text, readline style: `ctrl+w`, `ctrl+u` and `ctrl+k` delete a word, to the start and to the end; `ctrl+a` and `ctrl+e` go to the start and end; `alt+b` and `alt+f` move by words.
+| Key         | Action                                 | Name                    |
+|-------------|----------------------------------------|-------------------------|
+| `enter`     | search (empty repeats the last search) | `search.submit`         |
+| `esc`       | cancel                                 | `search.cancel`         |
+| `ctrl+c`    | clear the input (again to cancel)      | `search.clear`          |
+| `tab`       | next scope: file → dir → repo          | `search.scope_next`     |
+| `shift+tab` | previous scope                         | `search.scope_prev`     |
+| `ctrl+r`    | regex / literal text                   | `search.toggle_literal` |
+| `up`        | previous search in history             | `search.history_prev`   |
+| `down`      | next search in history                 | `search.history_next`   |
+| `ctrl+w`    | delete the word before the cursor      | (fixed)                 |
+| `ctrl+u`    | delete to the start                    | (fixed)                 |
+| `ctrl+k`    | delete to the end                      | (fixed)                 |
+| `ctrl+a`    | go to the start                        | (fixed)                 |
+| `ctrl+e`    | go to the end                          | (fixed)                 |
+| `alt+b`     | a word left                            | (fixed)                 |
+| `alt+f`     | a word right                           | (fixed)                 |
 
 ## Results list
 
-| Key                 | Action                    | Name                  |
-|---------------------|---------------------------|-----------------------|
-| `j` `down` `ctrl+n` | next result               | `results.down`        |
-| `k` `up` `ctrl+p`   | previous result           | `results.up`          |
-| `ctrl+d`            | half a page down          | `results.half_down`   |
-| `ctrl+u`            | half a page up            | `results.half_up`     |
-| `gg` `home`         | first result, or result n | `results.first`       |
-| `G` `end`           | last result, or result n  | `results.last`        |
-| `enter` `l`         | open in a new tab         | `results.open`        |
-| `O`                 | open in the focused pane  | `results.open_here`   |
-| `v`                 | open in a new pane beside | `results.open_vsplit` |
-| `s`                 | open in a new pane below  | `results.open_hsplit` |
-| `q` `esc`           | close the list            | `results.close`       |
+| Key         | Action                    | Name                  |
+|-------------|---------------------------|-----------------------|
+| `j` `down`  | next result               | `results.down`        |
+| `k` `up`    | previous result           | `results.up`          |
+| `ctrl+d`    | half a page down          | `results.half_down`   |
+| `ctrl+u`    | half a page up            | `results.half_up`     |
+| `gg` `home` | first result, or result n | `results.first`       |
+| `G` `end`   | last result, or result n  | `results.last`        |
+| `enter` `l` | open in a new tab         | `results.open`        |
+| `O`         | open in the focused pane  | `results.open_here`   |
+| `v`         | open in a new pane beside | `results.open_vsplit` |
+| `s`         | open in a new pane below  | `results.open_hsplit` |
+| `q` `esc`   | close the list            | `results.close`       |
 
 `{n}gg` and `{n}G` go to result *n*.
 
 ## Tabs
 
-| Key                                                                     | Action                           | Name                    |
-|-------------------------------------------------------------------------|----------------------------------|-------------------------|
-| `gt`                                                                    | next tab, or tab n               | `normal.next_tab`       |
-| `gT`                                                                    | previous tab                     | `normal.prev_tab`       |
-| `alt+1` `alt+2` `alt+3` `alt+4` `alt+5` `alt+6` `alt+7` `alt+8` `alt+9` | tab 1 … 9                        | `normal.tab_n`          |
-| `x`                                                                     | close the tab (not the last one) | `normal.close_tab`      |
-| `alt+t`                                                                 | show / hide the tab bar          | `normal.toggle_tab_bar` |
+| Key       | Action                           | Name                    |
+|-----------|----------------------------------|-------------------------|
+| `gt`      | next tab, or tab n               | `normal.next_tab`       |
+| `gT`      | previous tab                     | `normal.prev_tab`       |
+| `alt+1…9` | tab 1 … 9                        | `normal.tab_n`          |
+| `x`       | close the tab (not the last one) | `normal.close_tab`      |
+| `alt+t`   | show / hide the tab bar          | `normal.toggle_tab_bar` |
 
 `{n}gt` goes to tab *n*. `tab_n` goes to the tab numbered by the last digit of its key.
 
 ## Panes
 
-| Key                                       | Action                                            | Name                      |
-|-------------------------------------------|---------------------------------------------------|---------------------------|
-| `ctrl+w`                                  | prefix for the pane keys below                    | `normal.window`           |
-| `ctrl+w v` `ctrl+w ctrl+v`                | split side by side                                | `window.split_vertical`   |
-| `ctrl+w s` `ctrl+w S` `ctrl+w ctrl+s`     | split stacked                                     | `window.split_horizontal` |
-| `ctrl+w h` `ctrl+w ctrl+h` `ctrl+w left`  | focus the pane left (past the edge: the sidebar)  | `window.focus_left`       |
-| `ctrl+w j` `ctrl+w ctrl+j` `ctrl+w down`  | focus the pane below (past the edge: the results) | `window.focus_down`       |
-| `ctrl+w k` `ctrl+w ctrl+k` `ctrl+w up`    | focus the pane above                              | `window.focus_up`         |
-| `ctrl+w l` `ctrl+w ctrl+l` `ctrl+w right` | focus the pane right                              | `window.focus_right`      |
-| `ctrl+w w` `ctrl+w ctrl+w`                | next pane, then sidebar and results               | `window.next_pane`        |
-| `ctrl+w W`                                | previous pane                                     | `window.prev_pane`        |
-| `ctrl+w c`                                | close the pane (the tab if it's the last)         | `window.close`            |
-| `ctrl+w q` `ctrl+w ctrl+q`                | close the pane, like q                            | `window.quit`             |
-| `ctrl+w o` `ctrl+w ctrl+o`                | close every other pane                            | `window.only`             |
-| `ctrl+w =`                                | make all panes the same size                      | `window.equalize`         |
-| `ctrl+w >`                                | n columns wider                                   | `window.wider`            |
-| `ctrl+w <`                                | n columns narrower                                | `window.narrower`         |
-| `ctrl+w +`                                | n rows taller                                     | `window.taller`           |
-| `ctrl+w -`                                | n rows shorter                                    | `window.shorter`          |
-| `ctrl+w b`                                | scrollbind on / off for the pane                  | `window.scrollbind`       |
+| Key        | Action                                            | Name                      |
+|------------|---------------------------------------------------|---------------------------|
+| `ctrl+w`   | prefix for the pane keys below                    | `normal.window`           |
+| `ctrl+w v` | split side by side                                | `window.split_vertical`   |
+| `ctrl+w s` | split stacked                                     | `window.split_horizontal` |
+| `ctrl+w h` | focus the pane left (past the edge: the sidebar)  | `window.focus_left`       |
+| `ctrl+w j` | focus the pane below (past the edge: the results) | `window.focus_down`       |
+| `ctrl+w k` | focus the pane above                              | `window.focus_up`         |
+| `ctrl+w l` | focus the pane right                              | `window.focus_right`      |
+| `ctrl+w w` | next pane, then sidebar and results               | `window.next_pane`        |
+| `ctrl+w W` | previous pane                                     | `window.prev_pane`        |
+| `ctrl+w c` | close the pane (the tab if it's the last)         | `window.close`            |
+| `ctrl+w q` | close the pane, like q                            | `window.quit`             |
+| `ctrl+w o` | close every other pane                            | `window.only`             |
+| `ctrl+w =` | make all panes the same size                      | `window.equalize`         |
+| `ctrl+w >` | n columns wider                                   | `window.wider`            |
+| `ctrl+w <` | n columns narrower                                | `window.narrower`         |
+| `ctrl+w +` | n rows taller                                     | `window.taller`           |
+| `ctrl+w -` | n rows shorter                                    | `window.shorter`          |
+| `ctrl+w b` | scrollbind on / off for the pane                  | `window.scrollbind`       |
 
 These follow the window prefix. A count before the prefix or after it resizes by that much: `5 ctrl+w >` or `ctrl+w 5 >`.
 
@@ -130,8 +135,8 @@ These follow the window prefix. A count before the prefix or after it resizes by
 
 | Key                   | Action                              | Name            |
 |-----------------------|-------------------------------------|-----------------|
-| `j` `down` `ctrl+n`   | next heading (the document follows) | `toc.down`      |
-| `k` `up` `ctrl+p`     | previous heading                    | `toc.up`        |
+| `j` `down`            | next heading (the document follows) | `toc.down`      |
+| `k` `up`              | previous heading                    | `toc.up`        |
 | `ctrl+d`              | half a page down                    | `toc.half_down` |
 | `ctrl+u`              | half a page up                      | `toc.half_up`   |
 | `gg` `home`           | first heading, or heading n         | `toc.first`     |
@@ -157,8 +162,8 @@ These follow the window prefix. A count before the prefix or after it resizes by
 
 | Key                        | Action                                             | Name               |
 |----------------------------|----------------------------------------------------|--------------------|
-| `j` `down` `ctrl+n`        | next entry                                         | `menu.down`        |
-| `k` `up` `ctrl+p`          | previous entry                                     | `menu.up`          |
+| `j` `down`                 | next entry                                         | `menu.down`        |
+| `k` `up`                   | previous entry                                     | `menu.up`          |
 | `ctrl+d` `pgdown`          | half a page down                                   | `menu.half_down`   |
 | `ctrl+u` `pgup`            | half a page up                                     | `menu.half_up`     |
 | `gg` `home`                | first entry                                        | `menu.first`       |
@@ -178,27 +183,27 @@ These follow the window prefix. A count before the prefix or after it resizes by
 
 ## Menu filter
 
-| Key             | Action                                | Name            |
-|-----------------|---------------------------------------|-----------------|
-| `enter`         | stop filtering and open the selection | `filter.accept` |
-| `esc`           | clear the filter and stop             | `filter.cancel` |
-| `ctrl+c`        | clear the filter (again to stop)      | `filter.clear`  |
-| `down` `ctrl+n` | next entry                            | `filter.down`   |
-| `up` `ctrl+p`   | previous entry                        | `filter.up`     |
+| Key      | Action                                | Name            |
+|----------|---------------------------------------|-----------------|
+| `enter`  | stop filtering and open the selection | `filter.accept` |
+| `esc`    | clear the filter and stop             | `filter.cancel` |
+| `ctrl+c` | clear the filter (again to stop)      | `filter.clear`  |
+| `down`   | next entry                            | `filter.down`   |
+| `up`     | previous entry                        | `filter.up`     |
 
-Other keys edit the filter, which matches as you type.
+Other keys edit the filter, which matches as you type; the search bar's line-editing keys work here too.
 
 ## Help overlay
 
-| Key                                  | Action         | Name             |
-|--------------------------------------|----------------|------------------|
-| `j` `down` `ctrl+n` `ctrl+e` `enter` | scroll down    | `help.down`      |
-| `k` `up` `ctrl+p` `ctrl+y`           | scroll up      | `help.up`        |
-| `ctrl+d` `ctrl+f` `pgdown` `space`   | a page down    | `help.page_down` |
-| `ctrl+u` `ctrl+b` `pgup` `b`         | a page up      | `help.page_up`   |
-| `gg` `home`                          | top            | `help.top`       |
-| `G` `end`                            | bottom         | `help.bottom`    |
-| `esc` `q` `f1` `g?`                  | close the help | `help.close`     |
+| Key                                | Action         | Name             |
+|------------------------------------|----------------|------------------|
+| `j` `down`                         | scroll down    | `help.down`      |
+| `k` `up`                           | scroll up      | `help.up`        |
+| `ctrl+d` `ctrl+f` `pgdown` `space` | a page down    | `help.page_down` |
+| `ctrl+u` `ctrl+b` `pgup` `b`       | a page up      | `help.page_up`   |
+| `gg` `home`                        | top            | `help.top`       |
+| `G` `end`                          | bottom         | `help.bottom`    |
+| `esc` `q` `f1` `g?`                | close the help | `help.close`     |
 
 ## Mouse
 
