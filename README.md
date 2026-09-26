@@ -240,6 +240,11 @@ vim's quickfix, instead of opening a tab each. The opened file's matches are
 highlighted and `n` / `N` step through them. A file search belongs to the pane
 it was typed in.
 
+Separate terms with spaces to require them all: `alpha needle` matches only
+lines containing both, in any order, and highlights each one, the same AND the
+file menu's filter uses. `alpha|needle` still matches lines with either, and a
+phrase with a space is one regex term: `alpha\s+needle`.
+
 Matches are found in the markdown source but you read the rendered text, so
 joe-md looks for the matched text in the rendered lines of the block ripgrep
 matched and highlights it there, with the current match in a stronger colour.

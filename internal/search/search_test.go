@@ -115,3 +115,87 @@ func TestRun(t *testing.T) {
 		}
 	}
 }
+
+func TestSplitTerms(t *testing.T) {
+	if got := SplitTerms(""); len(got) != 0 {
+		t.Fatalf("empty query: %v", got)
+	}
+	got := SplitTerms("  alpha\tneedle\nomega  ")
+	want := []string{"alpha", "needle", "omega"}
+	if len(got) != len(want) {
+		t.Fatalf("got %q want %q", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %q want %q", got, want)
+		}
+	}
+}
+
+func TestRunMultiTerm(t *testing.T) {
+	if _, err := exec.LookPath("rg"); err != nil {
+		t.Skip("rg not installed")
+	}
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	a := write("a.md", "alpha needle alpha\nonly alpha here\nonly needle here\nneither\n")
+	ctx := context.Background()
+
+	res, err := Run(ctx, Request{Query: "alpha needle", Scope: File, Root: a})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Matches) != 1 || res.Matches[0].Line != 1 {
+		t.Fatalf("AND on one line: %+v", res)
+	}
+	m := res.Matches[0]
+	if len(m.Spans) != 3 {
+		t.Fatalf("merged spans %v in %q", m.Spans, m.Text)
+	}
+	if terms := m.Terms(); len(terms) != 2 || terms[0] != "alpha" || terms[1] != "needle" {
+		t.Fatalf("terms %q", terms)
+	}
+
+	// No single line holds all three: AND, not OR.
+	res, err = Run(ctx, Request{Query: "alpha needle here", Scope: File, Root: a})
+	if err != nil || len(res.Matches) != 0 {
+		t.Fatalf("three terms: %+v %v", res, err)
+	}
+
+	// Sharing a file is not enough; the terms must share a line.
+	b := write("b.md", "alpha\nneedle\n")
+	res, err = Run(ctx, Request{Query: "alpha needle", Scope: File, Root: b})
+	if err != nil || len(res.Matches) != 0 {
+		t.Fatalf("different lines: %+v %v", res, err)
+	}
+
+	// Across files, only the co-occurring line comes back.
+	res, err = Run(ctx, Request{Query: "alpha needle", Scope: Dir, Root: dir})
+	if err != nil || len(res.Matches) != 1 || res.Files != 1 || res.Matches[0].Path != a {
+		t.Fatalf("dir scope: %+v %v", res, err)
+	}
+
+	// Literal mode applies per term.
+	d := write("d.md", "a.b plus c\naxb plus c\n")
+	res, err = Run(ctx, Request{Query: "a.b c", Mode: Mode{Literal: true}, Scope: File, Root: d})
+	if err != nil || len(res.Matches) != 1 || res.Matches[0].Line != 1 {
+		t.Fatalf("literal AND: %+v %v", res, err)
+	}
+
+	// A repeated term runs once: no duplicated spans.
+	res, err = Run(ctx, Request{Query: "alpha alpha", Scope: File, Root: a})
+	if err != nil || len(res.Matches) != 2 || len(res.Matches[0].Spans) != 2 {
+		t.Fatalf("repeated term: %+v %v", res, err)
+	}
+
+	// A bad regex in any term is still an error.
+	if _, err = Run(ctx, Request{Query: "( alpha", Scope: File, Root: a}); err == nil {
+		t.Fatal("bad regex in one term should be an error")
+	}
+}

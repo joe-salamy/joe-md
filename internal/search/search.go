@@ -1,4 +1,5 @@
-// Package search runs ripgrep and parses its JSON output.
+// Package search runs ripgrep and parses its JSON output. A query holds
+// space-separated terms; a line matches only if every term does.
 package search
 
 import (
@@ -107,7 +108,7 @@ type Mode struct {
 
 // Request is one search.
 type Request struct {
-	Query string
+	Query string // Space-separated terms; every term must match the line.
 	Mode
 	Scope Scope
 	Root  string // file or directory to search, from Root
@@ -146,8 +147,14 @@ type Result struct {
 	Truncated bool    // Limit was hit
 }
 
+// SplitTerms splits a query into its space-separated terms. A line matches a
+// search only if every term matches it.
+func SplitTerms(q string) []string { return strings.Fields(q) }
+
 // Run searches with ripgrep. Directory scopes only search markdown files; a
-// single file is searched whatever its extension.
+// single file is searched whatever its extension. Space-separated terms are
+// ANDed: a line matches only if every term matches it, and then carries the
+// spans of every term, so the results list and the pane highlight them all.
 func Run(parent context.Context, req Request) (Result, error) {
 	rg, err := exec.LookPath("rg")
 	if err != nil {
@@ -161,6 +168,83 @@ func Run(parent context.Context, req Request) (Result, error) {
 	default:
 		limit = DefaultLimit
 	}
+	terms := SplitTerms(req.Query)
+	if len(terms) == 0 {
+		return Result{}, nil
+	}
+	seen := map[string]bool{}
+	uniq := make([]string, 0, len(terms))
+	for _, t := range terms {
+		if !seen[t] {
+			seen[t] = true
+			uniq = append(uniq, t)
+		}
+	}
+	if len(uniq) == 1 {
+		ms, truncated, err := runOne(parent, rg, req, uniq[0], limit)
+		if err != nil {
+			return Result{}, err
+		}
+		return finish(ms, truncated), nil
+	}
+	// One ripgrep run per term, intersected on file and line: the terms must
+	// share a line, not just a file.
+	type key struct {
+		path string
+		line int
+	}
+	byLine := map[key]*Match{}
+	var truncated bool
+	for i, t := range uniq {
+		if err := parent.Err(); err != nil {
+			return Result{}, err // superseded by a newer search
+		}
+		ms, trunc, err := runOne(parent, rg, req, t, limit)
+		if err != nil {
+			return Result{}, err
+		}
+		truncated = truncated || trunc
+		if i == 0 {
+			for j := range ms {
+				m := ms[j]
+				byLine[key{m.Path, m.Line}] = &m
+			}
+		} else {
+			keep := map[key]bool{}
+			for j := range ms {
+				k := key{ms[j].Path, ms[j].Line}
+				base, ok := byLine[k]
+				if !ok || keep[k] {
+					continue
+				}
+				// The file may have changed between runs; clamp so Terms
+				// can't slice past the base text.
+				for _, s := range ms[j].Spans {
+					if end := min(s[1], len(base.Text)); s[0] < end {
+						base.Spans = append(base.Spans, [2]int{s[0], end})
+					}
+				}
+				keep[k] = true
+			}
+			for k := range byLine {
+				if !keep[k] {
+					delete(byLine, k)
+				}
+			}
+		}
+		if len(byLine) == 0 {
+			break
+		}
+	}
+	out := make([]Match, 0, len(byLine))
+	for _, m := range byLine {
+		out = append(out, *m)
+	}
+	return finish(out, truncated), nil
+}
+
+// runOne runs one term through ripgrep, returning its matching lines.
+func runOne(parent context.Context, rg string, req Request, term string, limit int) ([]Match, bool, error) {
 	args := []string{"--json", [...]string{"-i", "-S", "-s"}[req.Case]}
 	if req.Literal {
 		args = append(args, "-F")
@@ -168,7 +252,7 @@ func Run(parent context.Context, req Request) (Result, error) {
 	if req.Scope != File {
 		args = append(args, "-t", "markdown")
 	}
-	args = append(args, "--", req.Query, req.Root)
+	args = append(args, "--", term, req.Root)
 
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -177,13 +261,14 @@ func Run(parent context.Context, req Request) (Result, error) {
 	cmd.Stderr = &stderr
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return Result{}, err
+		return nil, false, err
 	}
 	if err := cmd.Start(); err != nil {
-		return Result{}, err
+		return nil, false, err
 	}
 
-	var res Result
+	var ms []Match
+	var truncated bool
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 0, 64*1024), 64*1024*1024)
 	for sc.Scan() {
@@ -191,43 +276,56 @@ func Run(parent context.Context, req Request) (Result, error) {
 		if !ok {
 			continue
 		}
-		if len(res.Matches) == limit {
-			res.Truncated = true
+		if len(ms) == limit {
+			truncated = true
 			cancel() // kill rg; we have enough
 			break
 		}
-		res.Matches = append(res.Matches, m)
+		ms = append(ms, m)
 	}
 	waitErr := cmd.Wait()
 
 	if err := parent.Err(); err != nil {
-		return Result{}, err // superseded by a newer search
+		return nil, false, err // superseded by a newer search
 	}
 	// Exit 1 means no matches. Exit 2 means an error, but ripgrep keeps going
 	// past unreadable files, so only report it when nothing was found.
 	var exit *exec.ExitError
-	if waitErr != nil && !res.Truncated && len(res.Matches) == 0 {
+	if waitErr != nil && !truncated && len(ms) == 0 {
 		if !errors.As(waitErr, &exit) || exit.ExitCode() != 1 {
 			if msg := firstLines(stderr.String()); msg != "" {
-				return Result{}, errors.New(msg)
+				return nil, false, errors.New(msg)
 			}
-			return Result{}, waitErr
+			return nil, false, waitErr
 		}
 	}
+	return ms, truncated, nil
+}
 
-	sort.SliceStable(res.Matches, func(i, j int) bool {
-		a, b := res.Matches[i], res.Matches[j]
-		if a.Path != b.Path {
-			return a.Path < b.Path
+// finish sorts matches by path, then line, and counts the files.
+func finish(ms []Match, truncated bool) Result {
+	for i := range ms {
+		s := ms[i].Spans
+		sort.Slice(s, func(a, b int) bool {
+			if s[a][0] != s[b][0] {
+				return s[a][0] < s[b][0]
+			}
+			return s[a][1] < s[b][1]
+		})
+	}
+	sort.SliceStable(ms, func(i, j int) bool {
+		if ms[i].Path != ms[j].Path {
+			return ms[i].Path < ms[j].Path
 		}
-		return a.Line < b.Line
+		return ms[i].Line < ms[j].Line
 	})
-	for i, m := range res.Matches {
-		if i == 0 || m.Path != res.Matches[i-1].Path {
+	res := Result{Matches: ms, Truncated: truncated}
+	for i, m := range ms {
+		if i == 0 || m.Path != ms[i-1].Path {
 			res.Files++
 		}
 	}
-	return res, nil
+	return res
 }
 
 // rgText is ripgrep's encoding of possibly non-UTF-8 data.
