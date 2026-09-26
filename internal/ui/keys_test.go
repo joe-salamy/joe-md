@@ -185,6 +185,13 @@ func TestHelpOverlay(t *testing.T) {
 			t.Errorf("help should contain %q", want)
 		}
 	}
+	for _, w := range []int{40, 58, 98} {
+		for _, l := range a.keymap.helpText(w, a.theme) {
+			if ansi.StringWidth(l) > w {
+				t.Errorf("help line wider than %d: %q", w, ansi.Strip(l))
+			}
+		}
+	}
 	screen := ansi.Strip(a.View().Content)
 	if !strings.Contains(screen, "Keys") || !strings.Contains(screen, "HELP") {
 		t.Fatalf("help should be drawn:\n%s", screen)

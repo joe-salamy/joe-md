@@ -48,16 +48,24 @@ func (km *Keymap) helpText(width int, th theme) []string {
 			out = append(out, "")
 		}
 		out = append(out, th.menuTitle.Render(" "+g))
+		indent := strings.Repeat(" ", keyW+5)
 		row := func(keys, desc string) {
-			d := th.bar.Render(desc)
+			// The description wraps under itself, clear of the keys.
+			var d []string
+			for _, l := range strings.Split(ansi.Wordwrap(desc, max(width-keyW-5, 10), " "), "\n") {
+				d = append(d, th.bar.Render(l))
+			}
 			if w := ansi.StringWidth(keys); w <= keyW {
-				out = append(out, "   "+th.barPrompt.Render(keys)+strings.Repeat(" ", keyW-w+2)+d)
-				return
+				out = append(out, "   "+th.barPrompt.Render(keys)+strings.Repeat(" ", keyW-w+2)+d[0])
+				d = d[1:]
+			} else {
+				for _, l := range strings.Split(ansi.Wordwrap(keys, width-3, " "), "\n") {
+					out = append(out, "   "+th.barPrompt.Render(l))
+				}
 			}
-			for _, l := range strings.Split(ansi.Wordwrap(keys, width-3, " "), "\n") {
-				out = append(out, "   "+th.barPrompt.Render(l))
+			for _, l := range d {
+				out = append(out, indent+l)
 			}
-			out = append(out, "   "+strings.Repeat(" ", keyW+2)+d)
 		}
 		for _, r := range km.rows(g) {
 			var alts []string
