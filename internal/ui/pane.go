@@ -205,12 +205,19 @@ func (p *Pane) Percent() string {
 }
 
 // Render returns exactly p.height lines, each exactly p.width cells wide.
+// When the pane is wider than the wrap width the document is centred; a line
+// wider than the wrap (a long code line, a wide table) gives up some of its
+// margin rather than being cut off.
 func (p *Pane) Render(th theme) []string {
 	out := make([]string, p.height)
+	margin := max(p.width-p.wrap, 0) / 2
 	for y := range out {
 		l := ""
 		if r := p.offset + y; p.view != nil && r < len(p.view.Lines) {
 			l = p.decorate(r, p.view.Lines[r], th)
+			if pad := min(margin, p.width-ansi.StringWidth(l)); pad > 0 {
+				l = strings.Repeat(" ", pad) + l
+			}
 		}
 		out[y] = fit(l, p.width)
 	}
