@@ -102,7 +102,7 @@ one page, and `f1` (or `g?`) shows them inside joe-md, as currently bound:
 | `n` `N`                      | next / previous match               |
 | `]q` `[q`                    | open next / previous search result  |
 | `gr`                         | open / close the results list       |
-| `esc`                        | kill the search: no more highlights |
+| `esc`                        | kill the search: no more highlights or results |
 | `ctrl+s`                     | show / hide the search bar          |
 | `tab` `shift+tab`            | cycle focus: sidebar, each pane, results |
 | `ctrl+g`                     | show the file's full path           |

@@ -173,7 +173,7 @@ func init() {
 			run: docOnly(func(a *App, c call) { a.stepResult(c.n) })},
 		&action{name: "prev_result", desc: "previous result, in the focused pane", row: "next / previous result, in the focused pane", keys: keys("[ q"),
 			run: docOnly(func(a *App, c call) { a.stepResult(-c.n) })},
-		&action{name: "clear_search", desc: "kill the search: no more highlights", keys: keys("esc"),
+		&action{name: "clear_search", desc: "kill the search: no more highlights or results", keys: keys("esc"),
 			run: do(func(a *App, c call) { a.killSearch() })},
 		&action{name: "toggle_search_bar", desc: "show / hide the search bar", keys: keys("ctrl+s"),
 			run: do(func(a *App, c call) { a.showBar = !a.showBar; a.layout() })},
@@ -187,8 +187,9 @@ func init() {
 			run: do(func(a *App, c call) {
 				if a.input.Value() != "" {
 					a.input.SetValue("")
-				} else {
+				} else { // same as cancel
 					a.stopTyping()
+					a.killSearch()
 				}
 			})},
 		&action{name: "scope_next", desc: "next scope: file → dir → repo", row: "next / previous scope: file → dir → repo", keys: keys("tab"),
@@ -233,7 +234,7 @@ func init() {
 		&action{name: "open_hsplit", desc: "open in a new pane below", row: "open in a new pane beside / below", keys: keys("s"),
 			run: do(func(a *App, c call) { a.openResult(openHSplit) })},
 		&action{name: "close", desc: "close the list, killing the search too", keys: keys("q", "esc"),
-			run: do(func(a *App, c call) { a.closeResults(); a.killSearch() })},
+			run: do(func(a *App, c call) { a.killSearch() })},
 	)
 
 	add("normal", "Tabs",

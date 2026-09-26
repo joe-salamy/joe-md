@@ -32,15 +32,15 @@ explains each feature.
 
 ## Search
 
-| Key      | Action                                      | Name                                 |
-|----------|---------------------------------------------|--------------------------------------|
-| `/`      | search this file                            | `normal.search_file`                 |
-| `?`      | search the directory or repo                | `normal.search_files`                |
-| `n/N`    | next / previous match                       | `normal.next_match` / `prev_match`   |
-| `gr`     | open / close the results list               | `normal.toggle_results`              |
-| `]q/[q`  | next / previous result, in the focused pane | `normal.next_result` / `prev_result` |
-| `esc`    | kill the search: no more highlights         | `normal.clear_search`                |
-| `ctrl+s` | show / hide the search bar                  | `normal.toggle_search_bar`           |
+| Key      | Action                                         | Name                                 |
+|----------|------------------------------------------------|--------------------------------------|
+| `/`      | search this file                               | `normal.search_file`                 |
+| `?`      | search the directory or repo                   | `normal.search_files`                |
+| `n/N`    | next / previous match                          | `normal.next_match` / `prev_match`   |
+| `gr`     | open / close the results list                  | `normal.toggle_results`              |
+| `]q/[q`  | next / previous result, in the focused pane    | `normal.next_result` / `prev_result` |
+| `esc`    | kill the search: no more highlights or results | `normal.clear_search`                |
+| `ctrl+s` | show / hide the search bar                     | `normal.toggle_search_bar`           |
 
 ## Search bar
 

@@ -326,6 +326,42 @@ func TestEscKillsSearch(t *testing.T) {
 	}
 }
 
+func TestEscDropsResults(t *testing.T) {
+	dir := fixture(t)
+	path := filepath.Join(dir, "a.md")
+	search := func(a *App) {
+		t.Helper()
+		p, req := a.pane, search.Request{Query: "text", Scope: search.Dir, Root: dir}
+		res := search.Result{Files: 1, Matches: []search.Match{{Path: path, Line: 3, Text: "text", Spans: [][2]int{{0, 4}}}}}
+		a.seq++
+		a.update(searchDoneMsg{seq: a.seq, pane: p, req: req, res: res, pre: indexed(req, res.Matches, p.doc, p.view)})
+		if !a.showResults || a.focus != focusResults {
+			t.Fatal("a dir search should open the results list")
+		}
+	}
+	for name, keys := range map[string][]string{
+		"esc in the bar":    {"/", "x", "esc"},
+		"ctrl+c in the bar": {"/", "x", "ctrl+c", "ctrl+c"},
+		"esc in the pane":   {"esc"},
+		"esc in the list":   {"esc"},
+		"q in the list":     {"q"},
+	} {
+		a := newTestApp(t, path)
+		search(a)
+		if name == "esc in the pane" {
+			a.focus = focusDoc
+		}
+		press(a, keys...)
+		if a.typing || a.showResults || a.results != nil || a.focus == focusResults || a.pane.match != nil {
+			t.Fatalf("%s: the results list and highlights should be gone", name)
+		}
+		press(a, "g", "r")
+		if a.showResults || a.msg != "no search results" {
+			t.Fatalf("%s: gr should find no results, msg=%q", name, a.msg)
+		}
+	}
+}
+
 func TestEscInBarKillsRunningSearch(t *testing.T) {
 	dir := fixture(t)
 	a := newTestApp(t, filepath.Join(dir, "a.md"))
