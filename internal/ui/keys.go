@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"joe-md/internal/config"
-	"joe-md/internal/search"
+	"github.com/joe-salamy/joe-md/internal/config"
+	"github.com/joe-salamy/joe-md/internal/search"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"

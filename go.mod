@@ -1,4 +1,4 @@
-module joe-md
+module github.com/joe-salamy/joe-md
 
 go 1.27.1
 

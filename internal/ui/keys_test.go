@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"joe-md/internal/config"
-	"joe-md/internal/doc"
-	"joe-md/internal/search"
+	"github.com/joe-salamy/joe-md/internal/config"
+	"github.com/joe-salamy/joe-md/internal/doc"
+	"github.com/joe-salamy/joe-md/internal/search"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"

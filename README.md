@@ -7,6 +7,24 @@ search, tabs, split panes and a pop-up file menu.
 Rendering uses [glamour](https://github.com/charmbracelet/glamour), the
 library behind glow, so documents look the same as they do in glow.
 
+## Install
+
+```sh
+go install github.com/joe-salamy/joe-md@latest
+```
+
+This needs Go 1.27 or newer and puts `joe-md` in `$GOBIN` (`~/go/bin` by
+default), which should be on your `PATH`. Run the same command again to update;
+`joe-md -version` shows what you have.
+
+joe-md also runs two programs, which it expects on your `PATH`:
+
+- [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`) for search
+- [micro](https://micro-editor.github.io) for editing (`e`)
+
+To build from a clone instead: `go build` in the repository puts `joe-md` in
+the current directory.
+
 ## Usage
 
 ```sh
@@ -25,6 +43,7 @@ starts with the file menu open there (the current directory by default).
 | `-no-tabs`   | off     | start with the tab bar hidden                        |
 | `-config`    | see below | read this settings file instead (it must exist)    |
 | `-dump-config` |       | print a settings file with every setting at its default |
+| `-version`   |         | print the version                                    |
 
 Flags override the settings file, which overrides the defaults.
 

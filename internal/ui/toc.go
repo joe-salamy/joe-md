@@ -4,8 +4,8 @@ import (
 	"image/color"
 	"strings"
 
-	"joe-md/internal/config"
-	"joe-md/internal/doc"
+	"github.com/joe-salamy/joe-md/internal/config"
+	"github.com/joe-salamy/joe-md/internal/doc"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"

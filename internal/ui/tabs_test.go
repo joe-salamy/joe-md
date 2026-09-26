@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"joe-md/internal/doc"
+	"github.com/joe-salamy/joe-md/internal/doc"
 
 	tea "charm.land/bubbletea/v2"
 )

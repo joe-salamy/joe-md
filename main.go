@@ -5,11 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime/debug"
 
-	"joe-md/internal/config"
-	"joe-md/internal/doc"
-	"joe-md/internal/search"
-	"joe-md/internal/ui"
+	"github.com/joe-salamy/joe-md/internal/config"
+	"github.com/joe-salamy/joe-md/internal/doc"
+	"github.com/joe-salamy/joe-md/internal/search"
+	"github.com/joe-salamy/joe-md/internal/ui"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -23,6 +24,7 @@ func main() {
 	noTabs := flag.Bool("no-tabs", false, "start with the tab bar hidden")
 	cfgPath := flag.String("config", "", "settings file (default "+config.Path()+")")
 	dump := flag.Bool("dump-config", false, "print a settings file with every setting at its default, and exit")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: joe-md [flags] [FILE.md | DIR]...\n\n"+
 			"Each file opens in a tab. A directory, or no arguments, opens the file menu there.\n"+
@@ -31,6 +33,10 @@ func main() {
 	}
 	flag.Parse()
 
+	if *showVersion {
+		fmt.Println("joe-md", version())
+		return
+	}
 	if *dump {
 		fmt.Print(config.Template(ui.Bindings()))
 		return
@@ -111,4 +117,35 @@ func main() {
 func fatal(err error) {
 	fmt.Fprintln(os.Stderr, "joe-md:", err)
 	os.Exit(1)
+}
+
+// version reports the module version go install or go build stamped into the
+// binary, falling back to the commit it was built from.
+func version() string {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "unknown"
+	}
+	if v := bi.Main.Version; v != "" && v != "(devel)" {
+		return v
+	}
+	rev, dirty := "", false
+	for _, s := range bi.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			rev = s.Value
+		case "vcs.modified":
+			dirty = s.Value == "true"
+		}
+	}
+	if rev == "" {
+		return "(devel)"
+	}
+	if len(rev) > 12 {
+		rev = rev[:12]
+	}
+	if dirty {
+		rev += "+dirty"
+	}
+	return rev
 }

@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"strings"
 
-	"joe-md/internal/config"
-	"joe-md/internal/doc"
-	"joe-md/internal/editor"
-	"joe-md/internal/search"
+	"github.com/joe-salamy/joe-md/internal/config"
+	"github.com/joe-salamy/joe-md/internal/doc"
+	"github.com/joe-salamy/joe-md/internal/editor"
+	"github.com/joe-salamy/joe-md/internal/search"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"

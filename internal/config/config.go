@@ -14,7 +14,7 @@ import (
 	"sort"
 	"strings"
 
-	"joe-md/internal/search"
+	"github.com/joe-salamy/joe-md/internal/search"
 
 	"github.com/pelletier/go-toml/v2"
 )

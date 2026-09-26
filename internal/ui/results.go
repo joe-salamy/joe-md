@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"joe-md/internal/search"
+	"github.com/joe-salamy/joe-md/internal/search"
 
 	"github.com/charmbracelet/x/ansi"
 )

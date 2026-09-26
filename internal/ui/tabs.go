@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"joe-md/internal/doc"
+	"github.com/joe-salamy/joe-md/internal/doc"
 
 	"github.com/charmbracelet/x/ansi"
 )
