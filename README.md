@@ -17,8 +17,10 @@ This needs Go 1.27 or newer and puts `joe-md` in `$GOBIN` (`~/go/bin` by
 default), which should be on your `PATH`. Run the same command again to update;
 `joe-md -version` shows what you have.
 
-The repository is private, so Go has to fetch it with your GitHub login
-rather than through the public module proxy. Once, before the first install:
+The repository is private, so Go has to fetch it with your GitHub login and
+skip the public module proxy and checksum database (`sum.golang.org`), which
+can't see it. Without this, the install fails with `verifying module: ...
+404 Not Found`. Once on each machine, before the first install:
 
 ```sh
 go env -w GOPRIVATE='github.com/joe-salamy/*'
