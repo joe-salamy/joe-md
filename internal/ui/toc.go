@@ -119,7 +119,11 @@ func (th theme) tocLevel(depth int) lipgloss.Style {
 	return th.tocLevels[min(depth, len(th.tocLevels)-1)]
 }
 
-func newTheme(dark bool, colors config.Theme) theme {
+// newTheme builds the UI styles: colours set in colors win, then the palette
+// that goes with the glamour style, then the dark/light defaults.
+func newTheme(dark bool, style string, colors config.Theme) theme {
+	p := palettes[style].over(colors)
+	colors = p.Theme
 	ld := lipgloss.LightDark(dark)
 	c := func(set, light, dark string) color.Color {
 		if set != "" {
@@ -141,12 +145,13 @@ func newTheme(dark bool, colors config.Theme) theme {
 	matchMarkCur := c(colors.MatchCurrent, "202", "214")
 	tabInactive := c(colors.TabInactive, "252", "238")
 	errColor := c(colors.Error, "160", "203")
-	black := lipgloss.Color("16")
+	cursorText := c(p.cursorText, "255", "255")
+	matchText := c(p.matchText, "16", "16")
 	s := lipgloss.NewStyle
 	return theme{
 		dim:              s().Foreground(dim),
 		tocTitle:         s().Foreground(dim).Bold(true),
-		tocCursor:        s().Foreground(lipgloss.Color("255")).Background(accent).Bold(true),
+		tocCursor:        s().Foreground(cursorText).Background(accent).Bold(true),
 		tocCurrent:       s().Foreground(accent).Bold(true),
 		tocLevels:        []lipgloss.Style{s().Foreground(fg).Bold(true), s().Foreground(fg), s().Foreground(mid)},
 		separator:        s().Foreground(dim),
@@ -156,8 +161,8 @@ func newTheme(dark bool, colors config.Theme) theme {
 		statusModeTOC:    s().Foreground(onAccent).Background(tocMode).Bold(true),
 		statusModeSearch: s().Foreground(onAccent).Background(searchMode).Bold(true),
 
-		match:        s().Foreground(black).Background(match),
-		matchCur:     s().Foreground(black).Background(matchCur).Bold(true),
+		match:        s().Foreground(matchText).Background(match),
+		matchCur:     s().Foreground(matchText).Background(matchCur).Bold(true),
 		matchMark:    s().Foreground(matchMark),
 		matchMarkCur: s().Foreground(matchMarkCur),
 

@@ -94,6 +94,11 @@ open_menu = ["o", "ctrl+o"]
 split_vertical = ["v", "|"]
 ```
 
+The UI colours (sidebar, tabs, status line, search bar, menu, match
+highlights) follow `style`: dracula, tokyo-night and pink come with matching
+colours, and the other styles use defaults that suit the terminal's background.
+Colours set under `[theme]` win over both.
+
 Unknown settings, bad values and key conflicts stop joe-md with a message
 naming the line, so typos don't go unnoticed.
 

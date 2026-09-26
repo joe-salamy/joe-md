@@ -95,7 +95,7 @@ type App struct {
 func New(docs []*doc.Doc, opts Options) *App {
 	a := &App{
 		opts:       opts,
-		theme:      newTheme(opts.Dark, opts.Colors),
+		theme:      newTheme(opts.Dark, opts.Style, opts.Colors),
 		renderer:   doc.NewRenderer(opts.Style),
 		keymap:     opts.Keymap,
 		showTOC:    !opts.NoTOC,

@@ -84,11 +84,11 @@ func TestMatchesHighlightAndJump(t *testing.T) {
 	}
 
 	// The current highlight is drawn, and the rest of the line survives.
-	line := p.decorate(m.target[0], p.view.Lines[m.target[0]], newTheme(true, config.Theme{}))
+	line := p.decorate(m.target[0], p.view.Lines[m.target[0]], newTheme(true, "dark", config.Theme{}))
 	if ansi.Strip(line) != ansi.Strip(p.view.Lines[m.target[0]]) {
 		t.Fatalf("decorate changed the text:\n%q\n%q", ansi.Strip(line), ansi.Strip(p.view.Lines[m.target[0]]))
 	}
-	if !strings.Contains(ansi.Strip(p.decorate(m.target[1], p.view.Lines[m.target[1]], newTheme(true, config.Theme{}))), "▌") {
+	if !strings.Contains(ansi.Strip(p.decorate(m.target[1], p.view.Lines[m.target[1]], newTheme(true, "dark", config.Theme{}))), "▌") {
 		t.Fatal("gutter mark not drawn")
 	}
 }
