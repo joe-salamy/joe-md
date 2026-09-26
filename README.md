@@ -17,6 +17,14 @@ This needs Go 1.27 or newer and puts `joe-md` in `$GOBIN` (`~/go/bin` by
 default), which should be on your `PATH`. Run the same command again to update;
 `joe-md -version` shows what you have.
 
+The repository is private, so Go has to fetch it with your GitHub login
+rather than through the public module proxy. Once, before the first install:
+
+```sh
+go env -w GOPRIVATE='github.com/joe-salamy/*'
+gh auth setup-git   # lets git use the gh CLI's login for github.com
+```
+
 joe-md also runs two programs, which it expects on your `PATH`:
 
 - [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`) for search
