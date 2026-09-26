@@ -305,6 +305,62 @@ func TestMouseClearsMessage(t *testing.T) {
 	}
 }
 
+func TestEscKillsSearch(t *testing.T) {
+	dir := fixture(t)
+	path := filepath.Join(dir, "a.md")
+	a := newTestApp(t, path)
+	p, req := a.pane, search.Request{Query: "text", Scope: search.File, Root: path}
+	res := search.Result{Matches: []search.Match{{Path: path, Line: 3, Text: "text", Spans: [][2]int{{0, 4}}}}}
+	a.seq++
+	a.update(searchDoneMsg{seq: a.seq, pane: p, req: req, res: res, pre: indexed(req, res.Matches, p.doc, p.view)})
+	if a.pane.match == nil {
+		t.Fatal("expected highlights after the search")
+	}
+	press(a, "esc") // an executed search: nothing stays highlighted
+	if a.pane.match != nil {
+		t.Fatal("esc should clear every highlight")
+	}
+	press(a, "n")
+	if a.msg != "no previous search" {
+		t.Fatalf("a killed search should be forgotten, msg=%q", a.msg)
+	}
+}
+
+func TestEscInBarKillsRunningSearch(t *testing.T) {
+	dir := fixture(t)
+	a := newTestApp(t, filepath.Join(dir, "a.md"))
+	press(a, "/")
+	typeText(a, "text")
+	cmd := press(a, "enter") // the search runs in the background
+	if cmd == nil || a.searching == "" {
+		t.Fatal("submitting should start a background search")
+	}
+	press(a, "/")
+	if !a.typing {
+		t.Fatal("should be typing")
+	}
+	press(a, "esc")
+	if a.typing || a.searching != "" || a.cancel != nil {
+		t.Fatal("esc in the bar should stop typing and kill the running search")
+	}
+	a.update(cmd().(searchDoneMsg)) // the killed search lands late: ignored
+	if a.pane.match != nil {
+		t.Fatal("a killed search must never highlight")
+	}
+}
+
+func TestCtrlGShowsFullPath(t *testing.T) {
+	dir := fixture(t)
+	a := newTestApp(t, filepath.Join(dir, "a.md"))
+	if !filepath.IsAbs(a.pane.doc.Path) {
+		t.Fatalf("doc.Path should be absolute: %q", a.pane.doc.Path)
+	}
+	a.Update(tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl})
+	if a.msg != a.pane.doc.Path || !filepath.IsAbs(a.msg) {
+		t.Fatalf("ctrl+g should list the full path, got %q", a.msg)
+	}
+}
+
 func TestBackgroundIndex(t *testing.T) {
 	dir := t.TempDir()
 	var sb strings.Builder

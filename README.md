@@ -83,7 +83,7 @@ and digits are always counts.
 
 Counts work like vim: `5j`, `3]]`, `42G`. [KEYS.md](KEYS.md) has every key on
 one page, and `f1` (or `g?`) shows them inside joe-md, as currently bound:
-`j` `k` scroll, `esc` closes.
+`j` `k` scroll, `esc` kills the search, `q` closes.
 
 ### Document
 
@@ -102,11 +102,12 @@ one page, and `f1` (or `g?`) shows them inside joe-md, as currently bound:
 | `n` `N`                      | next / previous match               |
 | `]q` `[q`                    | open next / previous search result  |
 | `gr`                         | open / close the results list       |
+| `esc`                        | kill the search: no more highlights |
 | `ctrl+s`                     | show / hide the search bar          |
-| `tab` `shift+tab`            | cycle focus: each pane, sidebar, results |
-| `ctrl+g`                     | show the file path                  |
+| `tab` `shift+tab`            | cycle focus: sidebar, each pane, results |
+| `ctrl+g`                     | show the file's full path           |
 | `o`                          | open the file menu                  |
-| `q`                          | close the pane, else the tab; quits on the last one |
+| `q`                          | close the pane, else the tab; quits on the last one (the only way) |
 | `Q` `ctrl+c`                 | quit                                |
 
 ### Tabs
@@ -139,9 +140,7 @@ its own status row, highlighted on the focused one.
 |------------------------------|-------------------------------------|
 | `ctrl+w v` `ctrl+w s`        | split side by side / stacked        |
 | `ctrl+w h` `j` `k` `l`       | focus the pane left / below / above / right |
-| `ctrl+w w` `ctrl+w W`        | next / previous pane (then sidebar and results) |
-| `ctrl+w c`                   | close the pane (the tab if it was the last) |
-| `ctrl+w q`                   | close the pane, like `q`            |
+| `ctrl+w w` `ctrl+w W`        | next / previous pane (then results and sidebar) |
 | `ctrl+w o`                   | close every other pane              |
 | `ctrl+w =`                   | make all panes the same size        |
 | `{n}ctrl+w >` `<`            | *n* columns wider / narrower (or `ctrl+w {n} >`) |
@@ -220,7 +219,7 @@ rendered text happens in the background too.
 | `tab` `shift+tab`            | cycle scope: file → dir → repo      |
 | `ctrl+r`                     | regex / literal text                |
 | `ctrl+c`                     | clear the input (again to cancel)   |
-| `esc`                        | cancel                              |
+| `esc`                        | cancel and kill the search          |
 | `ctrl+w` `ctrl+u` `ctrl+k`   | delete word / to start / to end     |
 | `ctrl+a` `ctrl+e`            | start / end of line                 |
 | `ctrl+h` `ctrl+d`            | delete backwards / forwards         |
@@ -235,10 +234,11 @@ outside one. Directory scopes search markdown files only and respect
 A **file** search works like vim's `/`: it jumps to the first match below the
 view and `n` / `N` step through the rest. A **dir** or **repo** search opens a
 results list (`j` `k` to move, `enter` to open in a tab, `O` to open in the
-focused pane, `v` / `s` to open in a split, `q` or `esc` to close). `]q` /
-`[q` step through results in the focused pane, like vim's quickfix, instead of
-opening a tab each. The opened file's matches are highlighted and `n` / `N`
-step through them. A file search belongs to the pane it was typed in.
+focused pane, `v` / `s` to open in a split, `q` or `esc` to close, killing the
+search either way). `]q` / `[q` step through results in the focused pane, like
+vim's quickfix, instead of opening a tab each. The opened file's matches are
+highlighted and `n` / `N` step through them. A file search belongs to the pane
+it was typed in.
 
 Matches are found in the markdown source but you read the rendered text, so
 joe-md looks for the matched text in the rendered lines of the block ripgrep

@@ -59,18 +59,12 @@ func (km *Keymap) helpText(width int, th theme) []string {
 			}
 			out = append(out, "   "+strings.Repeat(" ", keyW+2)+d)
 		}
-		for _, x := range actions {
-			if x.group != g {
-				continue
+		for _, r := range km.rows(g) {
+			var alts []string
+			for _, ks := range r.keys {
+				alts = append(alts, strings.Join(ks, " "))
 			}
-			ks := km.display(x)
-			if len(ks) == 0 {
-				ks = []string{"(unbound)"}
-			}
-			row(strings.Join(ks, " "), x.desc)
-		}
-		for _, f := range fixedKeys[g] {
-			row(f.keys, f.desc)
+			row(strings.Join(alts, " / "), r.desc)
 		}
 		if n := groupNotes[g]; n != "" {
 			n = strings.NewReplacer("`", "", "*", "").Replace(n)

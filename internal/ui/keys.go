@@ -43,6 +43,9 @@ type action struct {
 	desc      string
 	keys      []string // defaults
 	run       func(a *App, c call) tea.Cmd
+	// row, if set, merges the action with the ones next to it that have the
+	// same row into one line of the help and KEYS.md, described by row.
+	row string
 }
 
 func keys(k ...string) []string { return k }
@@ -75,12 +78,9 @@ type fixedKey struct{ keys, desc string }
 var fixedKeys = map[string][]fixedKey{
 	"Search bar": {
 		{"ctrl+w", "delete the word before the cursor"},
-		{"ctrl+u", "delete to the start"},
-		{"ctrl+k", "delete to the end"},
-		{"ctrl+a", "go to the start"},
-		{"ctrl+e", "go to the end"},
-		{"alt+b", "a word left"},
-		{"alt+f", "a word right"},
+		{"ctrl+u/k", "delete to the start / end"},
+		{"ctrl+a/e", "go to the start / end"},
+		{"alt+b/f", "a word left / right"},
 	},
 }
 
@@ -107,19 +107,19 @@ func init() {
 	}
 
 	add("normal", "Scrolling",
-		&action{name: "scroll_down", desc: "one line down", keys: keys("j", "down"),
+		&action{name: "scroll_down", desc: "one line down", row: "one line down / up", keys: keys("j", "down"),
 			run: docOnly(func(a *App, c call) { a.pane.ScrollBy(c.n) })},
-		&action{name: "scroll_up", desc: "one line up", keys: keys("k", "up"),
+		&action{name: "scroll_up", desc: "one line up", row: "one line down / up", keys: keys("k", "up"),
 			run: docOnly(func(a *App, c call) { a.pane.ScrollBy(-c.n) })},
-		&action{name: "half_page_down", desc: "half a page down", keys: keys("ctrl+d"),
+		&action{name: "half_page_down", desc: "half a page down", row: "half a page down / up", keys: keys("ctrl+d"),
 			run: docOnly(func(a *App, c call) { a.pane.ScrollBy(c.n * half(a)) })},
-		&action{name: "half_page_up", desc: "half a page up", keys: keys("ctrl+u"),
+		&action{name: "half_page_up", desc: "half a page up", row: "half a page down / up", keys: keys("ctrl+u"),
 			run: docOnly(func(a *App, c call) { a.pane.ScrollBy(-c.n * half(a)) })},
-		&action{name: "page_down", desc: "a page down", keys: keys("ctrl+f", "pgdown", "space", "f"),
+		&action{name: "page_down", desc: "a page down", row: "a page down / up", keys: keys("ctrl+f", "pgdown", "space", "f"),
 			run: docOnly(func(a *App, c call) { a.pane.ScrollBy(c.n * page(a)) })},
-		&action{name: "page_up", desc: "a page up", keys: keys("ctrl+b", "pgup", "b"),
+		&action{name: "page_up", desc: "a page up", row: "a page down / up", keys: keys("ctrl+b", "pgup", "shift+space", "b"),
 			run: docOnly(func(a *App, c call) { a.pane.ScrollBy(-c.n * page(a)) })},
-		&action{name: "top", desc: "top, or source line n", keys: keys("g g", "home"),
+		&action{name: "top", desc: "top, or source line n", row: "top / bottom, or source line n", keys: keys("g g", "home"),
 			run: docOnly(func(a *App, c call) {
 				if c.count > 0 {
 					a.gotoSourceLine(c.count)
@@ -127,7 +127,7 @@ func init() {
 					a.pane.ScrollTo(0)
 				}
 			})},
-		&action{name: "bottom", desc: "bottom, or source line n", keys: keys("G", "end"),
+		&action{name: "bottom", desc: "bottom, or source line n", row: "top / bottom, or source line n", keys: keys("G", "end"),
 			run: docOnly(func(a *App, c call) {
 				if c.count > 0 {
 					a.gotoSourceLine(c.count)
@@ -135,9 +135,9 @@ func init() {
 					a.pane.ScrollToBottom()
 				}
 			})},
-		&action{name: "next_heading", desc: "next heading", keys: keys("] ]", "}"),
+		&action{name: "next_heading", desc: "next heading", row: "next / previous heading", keys: keys("] ]", "}"),
 			run: docOnly(func(a *App, c call) { a.pane.GotoHeading(a.pane.NextHeading(c.n)) })},
-		&action{name: "prev_heading", desc: "previous heading", keys: keys("[ [", "{"),
+		&action{name: "prev_heading", desc: "previous heading", row: "next / previous heading", keys: keys("[ [", "{"),
 			run: docOnly(func(a *App, c call) { a.pane.GotoHeading(a.pane.NextHeading(-c.n)) })},
 	)
 	add("normal", "File",
@@ -153,7 +153,7 @@ func init() {
 				}
 				return cmd
 			}},
-		&action{name: "show_path", desc: "show the file's path", keys: keys("ctrl+g"),
+		&action{name: "show_path", desc: "show the file's full path", keys: keys("ctrl+g"),
 			run: docOnly(func(a *App, c call) { a.msg = a.pane.doc.Path })},
 		&action{name: "open_menu", desc: "open the file menu", keys: keys("o"),
 			run: func(a *App, c call) tea.Cmd { return a.menuHere() }},
@@ -163,24 +163,26 @@ func init() {
 			run: func(a *App, c call) tea.Cmd { return a.startSearch(search.File) }},
 		&action{name: "search_files", desc: "search the directory or repo", keys: keys("?"),
 			run: func(a *App, c call) tea.Cmd { return a.startSearch(a.crossScope) }},
-		&action{name: "next_match", desc: "next match", keys: keys("n"),
+		&action{name: "next_match", desc: "next match", row: "next / previous match", keys: keys("n"),
 			run: docOnly(func(a *App, c call) { a.nextMatch(c.n) })},
-		&action{name: "prev_match", desc: "previous match", keys: keys("N"),
+		&action{name: "prev_match", desc: "previous match", row: "next / previous match", keys: keys("N"),
 			run: docOnly(func(a *App, c call) { a.nextMatch(-c.n) })},
 		&action{name: "toggle_results", desc: "open / close the results list", keys: keys("g r"),
 			run: do(func(a *App, c call) { a.toggleResults() })},
-		&action{name: "next_result", desc: "next result, in the focused pane", keys: keys("] q"),
+		&action{name: "next_result", desc: "next result, in the focused pane", row: "next / previous result, in the focused pane", keys: keys("] q"),
 			run: docOnly(func(a *App, c call) { a.stepResult(c.n) })},
-		&action{name: "prev_result", desc: "previous result, in the focused pane", keys: keys("[ q"),
+		&action{name: "prev_result", desc: "previous result, in the focused pane", row: "next / previous result, in the focused pane", keys: keys("[ q"),
 			run: docOnly(func(a *App, c call) { a.stepResult(-c.n) })},
+		&action{name: "clear_search", desc: "kill the search: no more highlights", keys: keys("esc"),
+			run: do(func(a *App, c call) { a.killSearch() })},
 		&action{name: "toggle_search_bar", desc: "show / hide the search bar", keys: keys("ctrl+s"),
 			run: do(func(a *App, c call) { a.showBar = !a.showBar; a.layout() })},
 	)
 	add("search", "Search bar",
 		&action{name: "submit", desc: "search (empty repeats the last search)", keys: keys("enter"),
 			run: func(a *App, c call) tea.Cmd { return a.submit() }},
-		&action{name: "cancel", desc: "cancel", keys: keys("esc"),
-			run: do(func(a *App, c call) { a.stopTyping() })},
+		&action{name: "cancel", desc: "cancel and kill the search", keys: keys("esc"),
+			run: do(func(a *App, c call) { a.stopTyping(); a.killSearch() })},
 		&action{name: "clear", desc: "clear the input (again to cancel)", keys: keys("ctrl+c"),
 			run: do(func(a *App, c call) {
 				if a.input.Value() != "" {
@@ -189,15 +191,15 @@ func init() {
 					a.stopTyping()
 				}
 			})},
-		&action{name: "scope_next", desc: "next scope: file → dir → repo", keys: keys("tab"),
+		&action{name: "scope_next", desc: "next scope: file → dir → repo", row: "next / previous scope: file → dir → repo", keys: keys("tab"),
 			run: do(func(a *App, c call) { a.scope = a.scope.Next(1) })},
-		&action{name: "scope_prev", desc: "previous scope", keys: keys("shift+tab"),
+		&action{name: "scope_prev", desc: "previous scope", row: "next / previous scope: file → dir → repo", keys: keys("shift+tab"),
 			run: do(func(a *App, c call) { a.scope = a.scope.Next(-1) })},
 		&action{name: "toggle_literal", desc: "regex / literal text", keys: keys("ctrl+r"),
 			run: do(func(a *App, c call) { a.mode.Literal = !a.mode.Literal; a.setPlaceholder() })},
-		&action{name: "history_prev", desc: "previous search in history", keys: keys("up"),
+		&action{name: "history_prev", desc: "previous search in history", row: "previous / next search in history", keys: keys("up"),
 			run: do(func(a *App, c call) { a.historyStep(-1) })},
-		&action{name: "history_next", desc: "next search in history", keys: keys("down"),
+		&action{name: "history_next", desc: "next search in history", row: "previous / next search in history", keys: keys("down"),
 			run: do(func(a *App, c call) { a.historyStep(1) })},
 	)
 
@@ -205,17 +207,17 @@ func init() {
 		return do(func(a *App, c call) { r, rows := a.results, a.resultRows(); r.Select(f(r, c, rows), rows) })
 	}
 	add("results", "Results list",
-		&action{name: "down", desc: "next result", keys: keys("j", "down"),
+		&action{name: "down", desc: "next result", row: "next / previous result", keys: keys("j", "down"),
 			run: rsel(func(r *Results, c call, rows int) int { return r.cursor + c.n })},
-		&action{name: "up", desc: "previous result", keys: keys("k", "up"),
+		&action{name: "up", desc: "previous result", row: "next / previous result", keys: keys("k", "up"),
 			run: rsel(func(r *Results, c call, rows int) int { return r.cursor - c.n })},
-		&action{name: "half_down", desc: "half a page down", keys: keys("ctrl+d"),
+		&action{name: "half_down", desc: "half a page down", row: "half a page down / up", keys: keys("ctrl+d"),
 			run: rsel(func(r *Results, c call, rows int) int { return r.cursor + c.n*max(rows/2, 1) })},
-		&action{name: "half_up", desc: "half a page up", keys: keys("ctrl+u"),
+		&action{name: "half_up", desc: "half a page up", row: "half a page down / up", keys: keys("ctrl+u"),
 			run: rsel(func(r *Results, c call, rows int) int { return r.cursor - c.n*max(rows/2, 1) })},
-		&action{name: "first", desc: "first result, or result n", keys: keys("g g", "home"),
+		&action{name: "first", desc: "first result, or result n", row: "first / last result, or result n", keys: keys("g g", "home"),
 			run: rsel(func(r *Results, c call, rows int) int { return c.n - 1 })},
-		&action{name: "last", desc: "last result, or result n", keys: keys("G", "end"),
+		&action{name: "last", desc: "last result, or result n", row: "first / last result, or result n", keys: keys("G", "end"),
 			run: rsel(func(r *Results, c call, rows int) int {
 				if c.count > 0 {
 					return c.count - 1
@@ -226,16 +228,16 @@ func init() {
 			run: do(func(a *App, c call) { a.openResult(openNewTab) })},
 		&action{name: "open_here", desc: "open in the focused pane", keys: keys("O"),
 			run: do(func(a *App, c call) { a.openResult(openReplace) })},
-		&action{name: "open_vsplit", desc: "open in a new pane beside", keys: keys("v"),
+		&action{name: "open_vsplit", desc: "open in a new pane beside", row: "open in a new pane beside / below", keys: keys("v"),
 			run: do(func(a *App, c call) { a.openResult(openVSplit) })},
-		&action{name: "open_hsplit", desc: "open in a new pane below", keys: keys("s"),
+		&action{name: "open_hsplit", desc: "open in a new pane below", row: "open in a new pane beside / below", keys: keys("s"),
 			run: do(func(a *App, c call) { a.openResult(openHSplit) })},
-		&action{name: "close", desc: "close the list", keys: keys("q", "esc"),
-			run: do(func(a *App, c call) { a.closeResults() })},
+		&action{name: "close", desc: "close the list, killing the search too", keys: keys("q", "esc"),
+			run: do(func(a *App, c call) { a.closeResults(); a.killSearch() })},
 	)
 
 	add("normal", "Tabs",
-		&action{name: "next_tab", desc: "next tab, or tab n", keys: keys("g t"),
+		&action{name: "next_tab", desc: "next tab, or tab n", row: "next / previous tab, or tab n", keys: keys("g t"),
 			run: do(func(a *App, c call) {
 				if c.count > 0 {
 					a.gotoTab(c.count)
@@ -243,7 +245,7 @@ func init() {
 					a.stepTab(1)
 				}
 			})},
-		&action{name: "prev_tab", desc: "previous tab", keys: keys("g T"),
+		&action{name: "prev_tab", desc: "previous tab", row: "next / previous tab, or tab n", keys: keys("g T"),
 			run: do(func(a *App, c call) { a.stepTab(-c.n) })},
 		&action{name: "tab_n", desc: "tab 1 … 9", keys: keys("alt+1", "alt+2", "alt+3", "alt+4", "alt+5", "alt+6", "alt+7", "alt+8", "alt+9"),
 			run: do(func(a *App, c call) {
@@ -284,49 +286,30 @@ func init() {
 		})
 	}
 	add("window", "Panes",
-		&action{name: "split_vertical", desc: "split side by side", keys: keys("v"),
+		&action{name: "split_vertical", desc: "split side by side", row: "split side by side / stacked", keys: keys("v"),
 			run: win(func(a *App, c call) { a.splitPane(true) })},
-		&action{name: "split_horizontal", desc: "split stacked", keys: keys("s"),
+		&action{name: "split_horizontal", desc: "split stacked", row: "split side by side / stacked", keys: keys("s"),
 			run: win(func(a *App, c call) { a.splitPane(false) })},
-		&action{name: "focus_left", desc: "focus the pane left (past the edge: the sidebar)", keys: keys("h"),
+		&action{name: "focus_left", desc: "focus the pane left (past the edge: the sidebar)", row: "focus the pane left / below / above / right (past the edge: sidebar / results)", keys: keys("h"),
 			run: win(func(a *App, c call) { a.moveFocus("h") })},
-		&action{name: "focus_down", desc: "focus the pane below (past the edge: the results)", keys: keys("j"),
+		&action{name: "focus_down", desc: "focus the pane below (past the edge: the results)", row: "focus the pane left / below / above / right (past the edge: sidebar / results)", keys: keys("j"),
 			run: win(func(a *App, c call) { a.moveFocus("j") })},
-		&action{name: "focus_up", desc: "focus the pane above", keys: keys("k"),
+		&action{name: "focus_up", desc: "focus the pane above", row: "focus the pane left / below / above / right (past the edge: sidebar / results)", keys: keys("k"),
 			run: win(func(a *App, c call) { a.moveFocus("k") })},
-		&action{name: "focus_right", desc: "focus the pane right", keys: keys("l"),
+		&action{name: "focus_right", desc: "focus the pane right", row: "focus the pane left / below / above / right (past the edge: sidebar / results)", keys: keys("l"),
 			run: win(func(a *App, c call) { a.moveFocus("l") })},
-		&action{name: "next_pane", desc: "next pane, then sidebar and results", keys: keys("w"),
+		&action{name: "next_pane", desc: "next pane, then results and sidebar", row: "next / previous pane, then results and sidebar", keys: keys("w"),
 			run: win(func(a *App, c call) { a.cycleFocus(c.n) })},
-		&action{name: "prev_pane", desc: "previous pane", keys: keys("W"),
+		&action{name: "prev_pane", desc: "previous pane", row: "next / previous pane, then results and sidebar", keys: keys("W"),
 			run: win(func(a *App, c call) { a.cycleFocus(-c.n) })},
-		&action{name: "close", desc: "close the pane (the tab if it's the last)", keys: keys("c"),
-			run: win(func(a *App, c call) {
-				switch {
-				case a.tab().multi():
-					a.closePane()
-				case len(a.tabs) > 1:
-					a.closeTab()
-				default:
-					a.msg = "last pane (q quits)"
-				}
-			})},
-		&action{name: "quit", desc: "close the pane, like q", keys: keys("q"),
-			run: func(a *App, c call) tea.Cmd {
-				if !a.closePane() {
-					return tea.Quit
-				}
-				a.syncTOC()
-				return nil
-			}},
 		&action{name: "only", desc: "close every other pane", keys: keys("o"),
 			run: win(func(a *App, c call) { a.tab().only(); a.layout() })},
 		&action{name: "equalize", desc: "make all panes the same size", keys: keys("="),
 			run: win(func(a *App, c call) { a.tab().root.equalize(); a.layout() })},
-		&action{name: "wider", desc: "n columns wider", keys: keys(">"), run: resize(true, 1)},
-		&action{name: "narrower", desc: "n columns narrower", keys: keys("<"), run: resize(true, -1)},
-		&action{name: "taller", desc: "n rows taller", keys: keys("+"), run: resize(false, 1)},
-		&action{name: "shorter", desc: "n rows shorter", keys: keys("-"), run: resize(false, -1)},
+		&action{name: "wider", desc: "n columns wider", row: "n columns wider / narrower", keys: keys(">"), run: resize(true, 1)},
+		&action{name: "narrower", desc: "n columns narrower", row: "n columns wider / narrower", keys: keys("<"), run: resize(true, -1)},
+		&action{name: "taller", desc: "n rows taller", row: "n rows taller / shorter", keys: keys("+"), run: resize(false, 1)},
+		&action{name: "shorter", desc: "n rows shorter", row: "n rows taller / shorter", keys: keys("-"), run: resize(false, -1)},
 		&action{name: "scrollbind", desc: "scrollbind on / off for the pane", keys: keys("b"),
 			run: win(func(a *App, c call) {
 				a.pane.bind = !a.pane.bind
@@ -338,9 +321,9 @@ func init() {
 	)
 
 	add("normal", "Focus and layout",
-		&action{name: "focus_next", desc: "cycle focus: panes, sidebar, results", keys: keys("tab"),
+		&action{name: "focus_next", desc: "cycle focus: sidebar, panes, results", row: "cycle focus: sidebar, panes, results / backwards", keys: keys("tab"),
 			run: docOnly(func(a *App, c call) { a.cycleFocus(1) })},
-		&action{name: "focus_prev", desc: "cycle focus backwards", keys: keys("shift+tab"),
+		&action{name: "focus_prev", desc: "cycle focus backwards", row: "cycle focus: sidebar, panes, results / backwards", keys: keys("shift+tab"),
 			run: docOnly(func(a *App, c call) { a.cycleFocus(-1) })},
 		&action{name: "toggle_toc", desc: "show / hide the table of contents", keys: keys("ctrl+t"),
 			run: do(func(a *App, c call) {
@@ -356,17 +339,17 @@ func init() {
 		return do(func(a *App, c call) { a.tocSelect(f(a, c)) })
 	}
 	add("toc", "Table of contents",
-		&action{name: "down", desc: "next heading (the document follows)", keys: keys("j", "down"),
+		&action{name: "down", desc: "next heading (the document follows)", row: "next / previous heading (the document follows)", keys: keys("j", "down"),
 			run: tsel(func(a *App, c call) int { return a.toc.cursor + c.n })},
-		&action{name: "up", desc: "previous heading", keys: keys("k", "up"),
+		&action{name: "up", desc: "previous heading", row: "next / previous heading (the document follows)", keys: keys("k", "up"),
 			run: tsel(func(a *App, c call) int { return a.toc.cursor - c.n })},
-		&action{name: "half_down", desc: "half a page down", keys: keys("ctrl+d"),
+		&action{name: "half_down", desc: "half a page down", row: "half a page down / up", keys: keys("ctrl+d"),
 			run: tsel(func(a *App, c call) int { return a.toc.cursor + c.n*half(a) })},
-		&action{name: "half_up", desc: "half a page up", keys: keys("ctrl+u"),
+		&action{name: "half_up", desc: "half a page up", row: "half a page down / up", keys: keys("ctrl+u"),
 			run: tsel(func(a *App, c call) int { return a.toc.cursor - c.n*half(a) })},
-		&action{name: "first", desc: "first heading, or heading n", keys: keys("g g", "home"),
+		&action{name: "first", desc: "first heading, or heading n", row: "first / last heading, or heading n", keys: keys("g g", "home"),
 			run: tsel(func(a *App, c call) int { return c.n - 1 })},
-		&action{name: "last", desc: "last heading, or heading n", keys: keys("G", "end"),
+		&action{name: "last", desc: "last heading, or heading n", row: "first / last heading, or heading n", keys: keys("G", "end"),
 			run: tsel(func(a *App, c call) int {
 				if c.count > 0 {
 					return c.count - 1
@@ -398,25 +381,25 @@ func init() {
 		return do(func(a *App, c call) { m, rows := a.menu, a.menuRows(); m.selectIdx(f(m, c, rows), rows) })
 	}
 	add("menu", "File menu",
-		&action{name: "down", desc: "next entry", keys: keys("j", "down"),
+		&action{name: "down", desc: "next entry", row: "next / previous entry", keys: keys("j", "down"),
 			run: msel(func(m *Menu, c call, rows int) int { return m.cursor + c.n })},
-		&action{name: "up", desc: "previous entry", keys: keys("k", "up"),
+		&action{name: "up", desc: "previous entry", row: "next / previous entry", keys: keys("k", "up"),
 			run: msel(func(m *Menu, c call, rows int) int { return m.cursor - c.n })},
-		&action{name: "half_down", desc: "half a page down", keys: keys("ctrl+d", "pgdown"),
+		&action{name: "half_down", desc: "half a page down", row: "half a page down / up", keys: keys("ctrl+d", "pgdown"),
 			run: msel(func(m *Menu, c call, rows int) int { return m.cursor + c.n*max(rows/2, 1) })},
-		&action{name: "half_up", desc: "half a page up", keys: keys("ctrl+u", "pgup"),
+		&action{name: "half_up", desc: "half a page up", row: "half a page down / up", keys: keys("ctrl+u", "pgup"),
 			run: msel(func(m *Menu, c call, rows int) int { return m.cursor - c.n*max(rows/2, 1) })},
-		&action{name: "first", desc: "first entry", keys: keys("g g", "home"),
+		&action{name: "first", desc: "first entry", row: "first / last entry", keys: keys("g g", "home"),
 			run: msel(func(m *Menu, c call, rows int) int { return 0 })},
-		&action{name: "last", desc: "last entry", keys: keys("G", "end"),
+		&action{name: "last", desc: "last entry", row: "first / last entry", keys: keys("G", "end"),
 			run: msel(func(m *Menu, c call, rows int) int { return len(m.shown) - 1 })},
 		&action{name: "open", desc: "enter the directory, or open the file in a new tab", keys: keys("l", "right", "enter"),
 			run: func(a *App, c call) tea.Cmd { return a.menuActivate(openNewTab) }},
 		&action{name: "open_here", desc: "open the file in the focused pane", keys: keys("O"),
 			run: func(a *App, c call) tea.Cmd { return a.menuActivate(openReplace) }},
-		&action{name: "open_vsplit", desc: "open the file in a new pane beside", keys: keys("v"),
+		&action{name: "open_vsplit", desc: "open the file in a new pane beside", row: "open the file in a new pane beside / below", keys: keys("v"),
 			run: func(a *App, c call) tea.Cmd { return a.menuActivate(openVSplit) }},
-		&action{name: "open_hsplit", desc: "open the file in a new pane below", keys: keys("s"),
+		&action{name: "open_hsplit", desc: "open the file in a new pane below", row: "open the file in a new pane beside / below", keys: keys("s"),
 			run: func(a *App, c call) tea.Cmd { return a.menuActivate(openHSplit) }},
 		&action{name: "parent", desc: "parent directory", keys: keys("h", "left", "-", "backspace"),
 			run: do(func(a *App, c call) { a.menuUp() })},
@@ -467,9 +450,9 @@ func init() {
 					a.menu.setFilter("", a.menuAll, a.menuRows())
 				}
 			})},
-		&action{name: "down", desc: "next entry", keys: keys("down"),
+		&action{name: "down", desc: "next entry", row: "next / previous entry", keys: keys("down"),
 			run: msel(func(m *Menu, c call, rows int) int { return m.cursor + 1 })},
-		&action{name: "up", desc: "previous entry", keys: keys("up"),
+		&action{name: "up", desc: "previous entry", row: "next / previous entry", keys: keys("up"),
 			run: msel(func(m *Menu, c call, rows int) int { return m.cursor - 1 })},
 	)
 
@@ -477,17 +460,17 @@ func init() {
 		return do(func(a *App, c call) { a.help.scroll(f(a, c), a.helpRows(), len(a.helpLines())) })
 	}
 	add("help", "Help overlay",
-		&action{name: "down", desc: "scroll down", keys: keys("j", "down"),
+		&action{name: "down", desc: "scroll down", row: "scroll down / up", keys: keys("j", "down"),
 			run: hscroll(func(a *App, c call) int { return c.n })},
-		&action{name: "up", desc: "scroll up", keys: keys("k", "up"),
+		&action{name: "up", desc: "scroll up", row: "scroll down / up", keys: keys("k", "up"),
 			run: hscroll(func(a *App, c call) int { return -c.n })},
-		&action{name: "page_down", desc: "a page down", keys: keys("ctrl+d", "ctrl+f", "pgdown", "space"),
+		&action{name: "page_down", desc: "a page down", row: "a page down / up", keys: keys("ctrl+d", "ctrl+f", "pgdown", "space"),
 			run: hscroll(func(a *App, c call) int { return c.n * max(a.helpRows()-1, 1) })},
-		&action{name: "page_up", desc: "a page up", keys: keys("ctrl+u", "ctrl+b", "pgup", "b"),
+		&action{name: "page_up", desc: "a page up", row: "a page down / up", keys: keys("ctrl+u", "ctrl+b", "pgup", "b"),
 			run: hscroll(func(a *App, c call) int { return -c.n * max(a.helpRows()-1, 1) })},
-		&action{name: "top", desc: "top", keys: keys("g g", "home"),
+		&action{name: "top", desc: "top", row: "top / bottom", keys: keys("g g", "home"),
 			run: hscroll(func(a *App, c call) int { return -len(a.helpLines()) })},
-		&action{name: "bottom", desc: "bottom", keys: keys("G", "end"),
+		&action{name: "bottom", desc: "bottom", row: "top / bottom", keys: keys("G", "end"),
 			run: hscroll(func(a *App, c call) int { return len(a.helpLines()) })},
 		&action{name: "close", desc: "close the help", keys: keys("esc", "q", "f1", "g ?"),
 			run: do(func(a *App, c call) { a.help = nil })},
@@ -758,6 +741,94 @@ func (a *App) hint(ctx, name string) string {
 	return "unbound"
 }
 
+// helpRow is one line of the help and KEYS.md: one action, several merged
+// ones (see action.row), or a fixed key.
+type helpRow struct {
+	acts []*action  // none for a fixed key
+	keys [][]string // alternatives, shown split by " / "; one when zipped
+	desc string
+}
+
+// rows lists group g's lines. Merged actions with as many keys each are
+// zipped: j down and k up become j/k down/up.
+func (km *Keymap) rows(g string) []helpRow {
+	var out []helpRow
+	for _, x := range actions {
+		if x.group != g {
+			continue
+		}
+		if n := len(out); x.row != "" && n > 0 {
+			if prev := out[n-1].acts; prev[len(prev)-1].row == x.row && prev[0].ctx == x.ctx {
+				out[n-1].acts = append(prev, x)
+				continue
+			}
+		}
+		out = append(out, helpRow{acts: []*action{x}})
+	}
+	for i := range out {
+		r := &out[i]
+		r.desc = r.acts[0].desc
+		if len(r.acts) > 1 {
+			r.desc = r.acts[0].row
+		}
+		var ks [][]string
+		for _, x := range r.acts {
+			k := km.display(x)
+			if len(k) == 0 {
+				k = []string{"(unbound)"}
+			}
+			ks = append(ks, k)
+		}
+		r.keys = zipKeys(ks)
+	}
+	for _, f := range fixedKeys[g] {
+		out = append(out, helpRow{keys: [][]string{{f.keys}}, desc: f.desc})
+	}
+	return out
+}
+
+// zipKeys pairs up the keys of merged actions when each has as many:
+// [ctrl+d pgdown] and [ctrl+u pgup] become [ctrl+d/u pgdown/pgup].
+// Otherwise they stay apart.
+func zipKeys(ks [][]string) [][]string {
+	if len(ks) == 1 {
+		return ks
+	}
+	for _, k := range ks[1:] {
+		if len(k) != len(ks[0]) {
+			return ks
+		}
+	}
+	out := make([]string, len(ks[0]))
+	for i := range out {
+		col := make([]string, len(ks))
+		for j := range ks {
+			col[j] = ks[j][i]
+		}
+		out[i] = zipKey(col)
+	}
+	return [][]string{out}
+}
+
+// zipKey joins keys with "/" after any shared modifier or prefix key:
+// ctrl+w h and ctrl+w j become ctrl+w h/j.
+func zipKey(ks []string) string {
+	p := ks[0]
+	for _, k := range ks[1:] {
+		for !strings.HasPrefix(k, p) {
+			p = p[:len(p)-1]
+		}
+	}
+	p = p[:strings.LastIndexAny(p, " +")+1]
+	rest := make([]string, len(ks))
+	for i, k := range ks {
+		if rest[i] = k[len(p):]; rest[i] == "" {
+			return strings.Join(ks, "/")
+		}
+	}
+	return p + strings.Join(rest, "/")
+}
+
 // Markdown is KEYS.md: every group's actions in a table, with the name the
 // settings file uses for each.
 func (km *Keymap) Markdown() string {
@@ -777,22 +848,24 @@ explains each feature.
 		type row struct{ keys, desc, name string }
 		var rows []row
 		kw, dw, nw := len("Key"), len("Action"), len("Name")
-		for _, x := range actions {
-			if x.group != g {
-				continue
+		for _, r := range km.rows(g) {
+			var alts []string
+			for _, ks := range r.keys {
+				var q []string
+				for _, k := range ks {
+					q = append(q, "`"+strings.ReplaceAll(k, "|", `\|`)+"`")
+				}
+				alts = append(alts, strings.Join(q, " "))
 			}
-			var ks []string
-			for _, k := range km.display(x) {
-				ks = append(ks, "`"+strings.ReplaceAll(k, "|", `\|`)+"`")
+			name := "(fixed)"
+			if len(r.acts) > 0 {
+				names := []string{"`" + r.acts[0].ctx + "." + r.acts[0].name + "`"}
+				for _, x := range r.acts[1:] {
+					names = append(names, "`"+x.name+"`")
+				}
+				name = strings.Join(names, " / ")
 			}
-			r := row{strings.Join(ks, " "), x.desc, "`" + x.ctx + "." + x.name + "`"}
-			if r.keys == "" {
-				r.keys = "(unbound)"
-			}
-			rows = append(rows, r)
-		}
-		for _, f := range fixedKeys[g] {
-			rows = append(rows, row{"`" + f.keys + "`", f.desc, "(fixed)"})
+			rows = append(rows, row{strings.Join(alts, " / "), r.desc, name})
 		}
 		for _, r := range rows {
 			kw, dw, nw = max(kw, ansi.StringWidth(r.keys)), max(dw, ansi.StringWidth(r.desc)), max(nw, len(r.name))

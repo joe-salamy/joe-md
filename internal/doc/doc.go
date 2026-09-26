@@ -42,13 +42,18 @@ type Doc struct {
 	refs     string // link reference definitions, appended to every block
 }
 
-// Load reads and parses the markdown file at path.
+// Load reads and parses the markdown file at path. The doc's path is
+// absolute, so file identity, display and editing never depend on how the
+// file was named on its way in.
 func Load(path string) (*Doc, error) {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 	d := Parse(src)
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
 	d.Path = path
 	d.Name = filepath.Base(path)
 	return d, nil

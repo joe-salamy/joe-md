@@ -327,8 +327,8 @@ func (a *App) tocSelect(i int) {
 	a.pane.GotoHeading(a.toc.cursor)
 }
 
-// cycleFocus moves focus d steps through the visible parts: each pane in
-// order, then the sidebar and the results panel.
+// cycleFocus moves focus d steps through the visible parts: the sidebar,
+// each pane in order, then the results panel.
 func (a *App) cycleFocus(d int) {
 	type stop struct {
 		f focus
@@ -336,20 +336,22 @@ func (a *App) cycleFocus(d int) {
 	}
 	var order []stop
 	cur := 0
-	for _, l := range a.tab().leaves() {
-		if a.focus == focusDoc && l == a.tab().focus {
-			cur = len(order)
-		}
-		order = append(order, stop{focusDoc, l})
-	}
-	for _, f := range []focus{focusTOC, focusResults} {
-		if f == focusTOC && a.showTOC || f == focusResults && a.showResults {
+	add := func(f focus, show bool) {
+		if show {
 			if a.focus == f {
 				cur = len(order)
 			}
 			order = append(order, stop{f, a.tab().focus})
 		}
 	}
+	add(focusTOC, a.showTOC)
+	for _, l := range a.tab().leaves() {
+		if a.focus == focusDoc && l == a.tab().focus {
+			cur = len(order)
+		}
+		order = append(order, stop{focusDoc, l})
+	}
+	add(focusResults, a.showResults)
 	s := order[((cur+d)%len(order)+len(order))%len(order)]
 	a.focus = s.f
 	if s.n != a.tab().focus {

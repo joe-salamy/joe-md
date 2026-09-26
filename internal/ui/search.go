@@ -235,6 +235,7 @@ func (a *App) searchDone(m searchDoneMsg) {
 		}
 		wrapped, _ := a.pane.JumpMatch(1, true)
 		a.reportJump(1, wrapped)
+		a.syncResults()
 		a.syncTOC()
 
 	default:
@@ -286,6 +287,39 @@ func (a *App) nextMatch(n int) {
 		return
 	}
 	a.reportJump(n, wrapped)
+	a.syncResults()
+}
+
+// syncResults points the results list at the pane's current match, if the
+// list is from the same search.
+func (a *App) syncResults() {
+	p, r := a.pane, a.results
+	if p == nil || p.match == nil || p.match.cur < 0 || r == nil ||
+		r.req.Query != p.match.query || r.req.Mode != p.match.mode {
+		return
+	}
+	line := p.match.lines[p.match.cur] + 1
+	for i, m := range r.res.Matches {
+		if m.Line == line && samePath(m.Path, p.doc.Path) {
+			r.Select(i, a.resultRows())
+			return
+		}
+	}
+}
+
+// killSearch is esc: the running search stops, and no pane highlights
+// matches any more. Killed means killed: bumping the sequence drops a
+// search that is still computing, so its matches can never land after the
+// highlights are gone.
+func (a *App) killSearch() {
+	if a.cancel != nil {
+		a.cancel()
+		a.cancel, a.searching = nil, ""
+		a.seq++ // the killed search's completion is stale: ignore it
+	}
+	for _, p := range a.allPanes() {
+		p.ClearMatches()
+	}
 }
 
 func (a *App) reportJump(n int, wrapped bool) {

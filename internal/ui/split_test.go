@@ -55,7 +55,7 @@ func TestSplitFocusClose(t *testing.T) {
 	if got := paneNames(a); got != "a.md a.md b.md *b.md" {
 		t.Fatalf("hsplit of an open file: %q", got)
 	}
-	ctrlW(a, "c")
+	press(a, "q") // q is the only way to kill a pane
 
 	// Focus moves geometrically; h past the left edge reaches the sidebar.
 	ctrlW(a, "k")
@@ -109,8 +109,7 @@ func TestSplitNesting(t *testing.T) {
 	if !root.vert || len(root.kids) != 2 || root.kids[1].vert || len(root.kids[1].kids) != 2 {
 		t.Fatal("want vert[leaf, stack[leaf, leaf]]")
 	}
-	// Closing one of the stacked panes collapses the stack.
-	ctrlW(a, "c")
+	press(a, "q") // q is the only way to kill a pane
 	if root := a.tab().root; !root.vert || len(root.kids) != 2 || root.kids[1].pane == nil {
 		t.Fatal("stack should collapse back to a leaf")
 	}
