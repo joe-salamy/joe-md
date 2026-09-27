@@ -13,18 +13,18 @@ import (
 
 func TestFindTerms(t *testing.T) {
 	got := findTerms("Setup the SETUP and set", []string{"setup"})
-	want := []cellRange{{0, 5}, {10, 15}}
+	want := []cellRange{{start: 0, end: 5}, {start: 10, end: 15}}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("got %v want %v", got, want)
 	}
 	// Wide characters take two cells.
 	got = findTerms("日本 go", []string{"go"})
-	if len(got) != 1 || got[0] != (cellRange{5, 7}) {
+	if len(got) != 1 || got[0] != (cellRange{start: 5, end: 7}) {
 		t.Fatalf("wide: %v", got)
 	}
 	// Overlapping terms merge.
 	got = findTerms("abcdef", []string{"abc", "cde"})
-	if len(got) != 1 || got[0] != (cellRange{0, 5}) {
+	if len(got) != 1 || got[0] != (cellRange{start: 0, end: 5}) {
 		t.Fatalf("merge: %v", got)
 	}
 }
@@ -35,15 +35,49 @@ func TestFindPatterns(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Cells, not bytes: the wide characters take two cells each.
-	got := findPatterns("setup 日本 Up", pats)
-	want := []cellRange{{6, 10}, {11, 13}}
-	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+	got := findPatterns([]string{"setup 日本 Up"}, pats)
+	want := []cellRange{{6, 10, 0}, {11, 13, 0}}
+	if len(got) != 1 || len(got[0]) != 2 || got[0][0] != want[0] || got[0][1] != want[1] {
 		t.Fatalf("got %v want %v", got, want)
 	}
 	// Empty matches are not highlights.
 	pats, _ = search.Request{Query: "x*"}.Patterns()
-	if got := findPatterns("abc", pats); got != nil {
+	if got := findPatterns([]string{"abc"}, pats); len(got) != 0 {
 		t.Fatalf("empty matches: %v", got)
+	}
+}
+
+// A phrase that wraps is highlighted on both lines, less the padding at the
+// end of the first and the indent of the second.
+func TestFindPatternsAcrossWrap(t *testing.T) {
+	pats, err := search.Request{Query: "one fixed string", Mode: search.Mode{Literal: true}}.Patterns()
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := []string{
+		"  say one fixed     ",
+		"  string, and one\u00a0fixed\u00a0",
+		"  string here",
+	}
+	got := findPatterns(lines, pats)
+	want := map[int][]cellRange{
+		0: {{6, 15, 0}},
+		1: {{2, 8, 0}, {14, 23, 1}},
+		2: {{2, 8, 1}},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %v want %v", got, want)
+	}
+	for i, w := range want {
+		g := got[i]
+		if len(g) != len(w) {
+			t.Fatalf("line %d: got %v want %v", i, g, w)
+		}
+		for j := range w {
+			if g[j] != w[j] {
+				t.Fatalf("line %d: got %v want %v", i, g, w)
+			}
+		}
 	}
 }
 
@@ -144,5 +178,39 @@ func TestMatchesHighlightAndJump(t *testing.T) {
 	}
 	if !strings.Contains(ansi.Strip(p.decorate(m.target[1], p.view.Lines[m.target[1]], newTheme(true, "dark", config.Theme{}))), "▌") {
 		t.Fatal("gutter mark not drawn")
+	}
+}
+
+// A literal phrase is highlighted across markup and a wrap, and the current
+// match takes the strong colour on both of its lines.
+func TestMatchesPhraseAcrossWrap(t *testing.T) {
+	src := "aaaa bbbb cccc dddd eeee ffff gggg hhhh iiii jjjj one **fixed** string here\n"
+	p := testPane(t, src)
+	req := search.Request{Query: "one fixed string", Mode: search.Mode{Literal: true}}
+	p.setMatches(newMatches(req, []search.Match{{Line: 1, Text: strings.TrimSpace(src), Spans: [][2]int{{50, 70}}}}))
+	m := p.match
+	if len(m.target) != 1 || len(m.marks) != 0 {
+		t.Fatalf("targets %v marks %v", m.target, m.marks)
+	}
+	start := m.target[0]
+	var text []string
+	for _, r := range []int{start, start + 1} {
+		hs := m.hits[r]
+		if len(hs) != 1 || hs[0].from != start {
+			t.Fatalf("line %d hits %v", r, hs)
+		}
+		text = append(text, ansi.Cut(ansi.Strip(p.view.Lines[r]), hs[0].start, hs[0].end))
+	}
+	if got := strings.Join(text, " "); got != "one fixed string" {
+		t.Fatalf("highlighted %q", got)
+	}
+	p.JumpMatch(1, true)
+	th := newTheme(true, "dark", config.Theme{})
+	for _, r := range []int{start, start + 1} {
+		h := m.hits[r][0]
+		cut := ansi.Cut(p.decorate(r, p.view.Lines[r], th), h.start, h.end)
+		if !strings.Contains(cut, th.matchCur.Render(ansi.Strip(cut))) {
+			t.Fatalf("line %d not in the current colour: %q", r, cut)
+		}
 	}
 }

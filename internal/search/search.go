@@ -1,6 +1,7 @@
 // Package search runs ripgrep and parses its JSON output. A regex query holds
 // space-separated terms; a line matches only if every term does. A literal
-// query is one term, spaces and all.
+// query is one phrase, matched with any whitespace or inline markup between
+// its words.
 package search
 
 import (
@@ -165,13 +166,12 @@ func (r Request) Terms() []string {
 // Patterns compiles each term as a Go regexp that matches what ripgrep would,
 // so matches can be found again in text ripgrep never saw. Go's syntax is
 // close to ripgrep's but not identical; a term Go can't compile is an error.
+// The patterns are multi-line, so ^ and $ still match at each line of a text
+// holding several.
 func (r Request) Patterns() ([]*regexp.Regexp, error) {
 	var out []*regexp.Regexp
 	for _, t := range r.Terms() {
-		expr := t
-		if r.Literal {
-			expr = regexp.QuoteMeta(t)
-		}
+		expr := "(?m)" + r.expr(t)
 		if r.Case == IgnoreCase || r.Case == SmartCase && !hasUpper(t, r.Literal) {
 			expr = "(?i)" + expr
 		}
@@ -182,6 +182,31 @@ func (r Request) Patterns() ([]*regexp.Regexp, error) {
 		out = append(out, re)
 	}
 	return out, nil
+}
+
+// expr is the regexp ripgrep runs for term: the term itself, or for a
+// literal query its phrase (see phrase).
+func (r Request) expr(term string) string {
+	if r.Literal {
+		return phrase(term)
+	}
+	return term
+}
+
+// Inline markup that may sit next to the spaces of a phrase: emphasis and
+// code marks, link brackets and targets, and HTML tags.
+const markup = "(?:[*_~`]|\\[|\\]\\([^)]*\\)|\\]|<[^>]*>)*"
+
+// phrase is the regexp for literal phrase q: its words, quoted, with any
+// whitespace between them (a no-break space included), and markup allowed on
+// either side of it, so `one **fixed** string` matches "one fixed string".
+// The syntax is common to Go and ripgrep.
+func phrase(q string) string {
+	words := strings.Fields(q)
+	for i, w := range words {
+		words[i] = regexp.QuoteMeta(w)
+	}
+	return strings.Join(words, markup+"[\\s\\x{a0}]+"+markup)
 }
 
 // hasUpper reports whether term has a capital letter, as ripgrep's smart case
@@ -296,13 +321,10 @@ func Run(parent context.Context, req Request) (Result, error) {
 // runOne runs one term through ripgrep, returning its matching lines.
 func runOne(parent context.Context, rg string, req Request, term string, limit int) ([]Match, bool, error) {
 	args := []string{"--json", [...]string{"-i", "-S", "-s"}[req.Case]}
-	if req.Literal {
-		args = append(args, "-F")
-	}
 	if req.Scope != File {
 		args = append(args, "-t", "markdown")
 	}
-	args = append(args, "--", term, req.Root)
+	args = append(args, "--", req.expr(term), req.Root)
 
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()

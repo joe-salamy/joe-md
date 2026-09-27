@@ -79,7 +79,7 @@ tabs = true
 
 [search]
 scope = "dir"           # where ? starts: file, dir or repo
-literal = false         # one fixed string (rg -F), not regexes
+literal = false         # one phrase of plain text, not regexes
 case = "smart"          # ignore (rg -i), smart (rg -S) or sensitive
 
 [theme]                 # ANSI 0-255 or "#rrggbb"; see -dump-config for all
@@ -241,7 +241,7 @@ jumps to it. Hold `shift` while dragging to select text in most terminals.
 
 Searching uses [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg -i`: a
 case-insensitive regex, unless the settings file says otherwise). `ctrl+r` in
-the search bar switches between regex and literal text (`rg -F`), shown by the
+the search bar switches between regex and literal text (a phrase), shown by the
 `regex` / `literal` chip; the choice sticks for later searches. It runs only
 when you press `enter`, never while you type, and in the background, so big
 files and repos never make typing lag. Placing thousands of matches in the
@@ -278,21 +278,28 @@ In regex mode, separate terms with spaces to require them all: `alpha needle`
 matches only lines containing both, in any order, and highlights each one, the
 same AND the file menu's filter uses. `alpha|needle` still matches lines with
 either, and a phrase with a space is one regex term: `alpha\s+needle`. In
-literal mode the whole query is one phrase, spaces included (trimmed at the
-ends): `shut up` matches only those words side by side. ripgrep searches one
-line at a time, so a phrase broken across two source lines is not found.
+literal mode the whole query is one phrase of plain text (trimmed at the
+ends): `shut up` matches only those words side by side. Any run of spaces
+between the words matches, and so does inline markup around the spaces:
+`one fixed string` finds `one **fixed** string`, ``one `fixed` string`` and
+`one [fixed](a.md) string`. ripgrep searches one line at a time, so a phrase
+broken across two source lines is not found.
 
 Matches are found in the markdown source but you read the rendered text, so
 joe-md runs the query again (as Go regexps, with the same case rule) over the
 rendered lines of each block ripgrep matched, and highlights what it finds
-there, with the current match in a stronger colour. So `\bup\b` leaves the
+there, with the current match in a stronger colour. The block's lines are
+searched as one text, so a phrase that wraps onto the next line is highlighted
+on both. So `\bup\b` leaves the
 "up" in "setup" alone, and a case-sensitive search leaves other cases alone.
 Highlights cover the whole block, so a paragraph whose source line 3 matches
 also highlights the query on line 1. When the query matches nothing in the
 rendering (it is anchored with `^`, say), the text ripgrep matched is looked
 up instead, ignoring case. When that text is not visible either (an HTML
-attribute, say), the line gets a mark in the left margin instead. After `r` or an edit in micro
-the search re-runs so the highlights follow the new text.
+attribute, say, or a phrase around a link, which glamour renders as its
+text and then its URL), the line gets a mark in the left margin instead.
+After `r` or an edit in micro the search re-runs so the highlights follow the
+new text.
 
 ## How line tracking works
 

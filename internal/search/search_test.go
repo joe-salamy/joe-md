@@ -151,6 +151,10 @@ func TestPatterns(t *testing.T) {
 		{`up\W`, Mode{Case: SmartCase}, "UP! up!", []string{"UP!,up!"}},
 		{"a.b c", Mode{Literal: true}, "a.b c, axb c, A.B C", []string{"a.b c,A.B C"}},
 		{"alpha needle", Mode{}, "Alpha needle", []string{"Alpha", "needle"}},
+		// A phrase skips whitespace and inline markup between its words.
+		{"one fixed string", Mode{Literal: true}, "one **fixed** string, one `fixed`\n  string, one [fixed](a.md) string",
+			[]string{"one **fixed** string,one `fixed`\n  string,one [fixed](a.md) string"}},
+		{"one fixed", Mode{Literal: true}, "one\u00a0fixed, onefixed, one - fixed", []string{"one\u00a0fixed"}},
 	} {
 		pats, err := Request{Query: tc.q, Mode: tc.mode}.Patterns()
 		if err != nil || len(pats) != len(tc.want) {
@@ -221,6 +225,16 @@ func TestRunMultiTerm(t *testing.T) {
 	res, err = Run(ctx, Request{Query: " a.b c ", Mode: Mode{Literal: true}, Scope: File, Root: d})
 	if err != nil || len(res.Matches) != 1 || res.Matches[0].Line != 3 {
 		t.Fatalf("literal phrase: %+v %v", res, err)
+	}
+
+	// ripgrep skips markup between the words of a phrase too.
+	e := write("e.md", "one **fixed** string\none _fixed_  string\none `fixed` string\none fixed\nstring\n")
+	res, err = Run(ctx, Request{Query: "one fixed string", Mode: Mode{Literal: true}, Scope: File, Root: e})
+	if err != nil || len(res.Matches) != 3 || res.Matches[2].Line != 3 {
+		t.Fatalf("phrase with markup: %+v %v", res, err)
+	}
+	if got := res.Matches[0].Terms(); len(got) != 1 || got[0] != "one **fixed** string" {
+		t.Fatalf("phrase span: %q", got)
 	}
 
 	// A repeated term runs once: no duplicated spans.

@@ -16,13 +16,16 @@ import (
 // glamour's output, where markup is gone and lines are re-wrapped. So each
 // match is placed in two steps: the source line picks its block, then the
 // query's terms are matched again, as Go regexps, in that block's rendered
-// lines. If they match nothing there (say the term is anchored with ^), the
+// lines, searched as one text so a match can run across a wrap. If they match
+// nothing there (say the term is anchored with ^), the
 // strings ripgrep matched are looked up instead, ignoring case. If the text is
 // not visible either way (say it was a link URL), the line estimated from the
 // source position gets a gutter mark.
 
 // cellRange is a highlighted run of cells [start, end) on a rendered line.
-type cellRange struct{ start, end int }
+// from is the rendered line its match starts on, earlier for the rest of a
+// match that wrapped.
+type cellRange struct{ start, end, from int }
 
 type matches struct {
 	query string
@@ -220,22 +223,38 @@ func (m *matches) index(d *doc.Doc, v *doc.Rendered) {
 // only if the patterns find nothing in the block.
 func (m *matches) findInBlock(v *doc.Rendered, b int) []int {
 	start, end := v.BlockSpan(b)
-	find := func(f func(string) []cellRange) []int {
+	plain := make([]string, end-start)
+	for r := start; r < end; r++ {
+		plain[r-start] = ansi.Strip(v.Lines[r])
+	}
+	// The lines where matches start, and each line's highlights.
+	record := func(hits map[int][]cellRange) []int {
 		var lines []int
-		for r := start; r < end; r++ {
-			if hs := f(ansi.Strip(v.Lines[r])); len(hs) > 0 {
-				m.hits[r] = hs
-				lines = append(lines, r)
+		for i, hs := range hits {
+			for j := range hs {
+				hs[j].from += start
+				lines = append(lines, hs[j].from)
 			}
+			m.hits[start+i] = hs
 		}
-		return lines
+		sort.Ints(lines)
+		return compactInts(lines)
 	}
 	if len(m.pats) > 0 {
-		if lines := find(func(l string) []cellRange { return findPatterns(l, m.pats) }); len(lines) > 0 {
-			return lines
+		if hits := findPatterns(plain, m.pats); len(hits) > 0 {
+			return record(hits)
 		}
 	}
-	return find(func(l string) []cellRange { return findTerms(l, m.terms) })
+	hits := map[int][]cellRange{}
+	for i, l := range plain {
+		if hs := findTerms(l, m.terms); len(hs) > 0 {
+			for j := range hs {
+				hs[j].from = i
+			}
+			hits[i] = hs
+		}
+	}
+	return record(hits)
 }
 
 // nearest returns the element of sorted xs closest to x, preferring the later
@@ -275,7 +294,7 @@ func findTerms(line string, terms []string) []cellRange {
 		}
 		for i := 0; i+len(term) <= len(folded); {
 			if equalRunes(folded[i:i+len(term)], term) {
-				out = append(out, cellRange{cells[i], cells[i+len(term)]})
+				out = append(out, cellRange{start: cells[i], end: cells[i+len(term)]})
 				i += len(term)
 			} else {
 				i++
@@ -285,32 +304,70 @@ func findTerms(line string, terms []string) []cellRange {
 	return mergeRanges(out)
 }
 
-// findPatterns returns the cells of plain-text line that match any pattern,
-// merged and sorted. Empty matches are skipped.
-func findPatterns(line string, pats []*regexp.Regexp) []cellRange {
-	if line == "" || len(pats) == 0 {
+// findPatterns returns the cells that match any pattern in the plain-text
+// lines of a block, by index into lines, each line's merged and sorted. The
+// lines are searched as one text, so a match can run across a wrap; each line
+// gets its part, less the wrap's padding and indent. Empty matches are
+// skipped.
+func findPatterns(lines []string, pats []*regexp.Regexp) map[int][]cellRange {
+	if len(pats) == 0 {
 		return nil
 	}
-	var cells []int // cells[i] is the column where byte i starts, once needed
-	var out []cellRange
+	// Glamour pads lines to the wrap width; the padding is not text.
+	starts := make([]int, len(lines)) // byte offset of each line in text
+	var sb strings.Builder
+	for i, l := range lines {
+		if i > 0 {
+			sb.WriteByte('\n')
+		}
+		lines[i] = strings.TrimRight(l, " ")
+		starts[i] = sb.Len()
+		sb.WriteString(lines[i])
+	}
+	text := sb.String()
+	cells := make([][]int, len(lines)) // cells[i][b] is the column of byte b of line i, once needed
+	col := func(i, b int) int {
+		if cells[i] == nil {
+			cells[i] = make([]int, len(lines[i])+1)
+			c := 0
+			for j, r := range lines[i] {
+				cells[i][j] = c
+				c += ansi.StringWidth(string(r))
+			}
+			cells[i][len(lines[i])] = c
+		}
+		return cells[i][b]
+	}
+	out := map[int][]cellRange{}
 	for _, re := range pats {
-		for _, loc := range re.FindAllStringIndex(line, -1) {
+		for _, loc := range re.FindAllStringIndex(text, -1) {
 			if loc[0] == loc[1] {
 				continue
 			}
-			if cells == nil {
-				cells = make([]int, len(line)+1)
-				col := 0
-				for i, r := range line {
-					cells[i] = col
-					col += ansi.StringWidth(string(r))
+			from := -1
+			for i := sort.SearchInts(starts, loc[0]+1) - 1; i < len(lines) && starts[i] < loc[1]; i++ {
+				l := lines[i]
+				s, e := max(loc[0]-starts[i], 0), min(loc[1]-starts[i], len(l))
+				if loc[0] < starts[i] { // continued from the line above
+					s += len(l[s:]) - len(strings.TrimLeft(l[s:], " \u00a0"))
 				}
-				cells[len(line)] = col
+				if loc[1] > starts[i]+len(l) { // goes on to the line below
+					e = len(strings.TrimRight(l[:e], " \u00a0"))
+				}
+				if s >= e {
+					continue
+				}
+				if from < 0 {
+					from = i
+				}
+				out[i] = append(out[i], cellRange{col(i, s), col(i, e), from})
 			}
-			out = append(out, cellRange{cells[loc[0]], cells[loc[1]]})
 		}
 	}
-	return mergeRanges(out)
+	for i := range out {
+		out[i] = mergeRanges(out[i])
+	}
+	return out
 }
 
 // mergeRanges sorts out and merges the ranges that overlap.
@@ -356,15 +413,20 @@ func (p *Pane) decorate(r int, s string, th theme) string {
 	if m == nil || m.hits == nil {
 		return s
 	}
-	current := m.cur >= 0 && m.target[m.cur] == r
+	cur := -1
+	if m.cur >= 0 {
+		cur = m.target[m.cur]
+	}
+	current := cur == r
 	if hs := m.hits[r]; len(hs) > 0 {
-		style := th.match
-		if current {
-			style = th.matchCur
-		}
 		var sb strings.Builder
 		prev := 0
 		for _, h := range hs {
+			// The current match is highlighted on every line it wraps onto.
+			style := th.match
+			if h.from == cur {
+				style = th.matchCur
+			}
 			sb.WriteString(ansi.Cut(s, prev, h.start))
 			sb.WriteString("\x1b[0m")
 			sb.WriteString(style.Render(ansi.Strip(ansi.Cut(s, h.start, h.end))))
