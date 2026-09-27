@@ -1,5 +1,6 @@
-// Package search runs ripgrep and parses its JSON output. A query holds
-// space-separated terms; a line matches only if every term does.
+// Package search runs ripgrep and parses its JSON output. A regex query holds
+// space-separated terms; a line matches only if every term does. A literal
+// query is one term, spaces and all.
 package search
 
 import (
@@ -12,8 +13,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 // Scope is how much ripgrep searches around the current file.
@@ -108,7 +111,7 @@ type Mode struct {
 
 // Request is one search.
 type Request struct {
-	Query string // Space-separated terms; every term must match the line.
+	Query string // see Terms
 	Mode
 	Scope Scope
 	Root  string // file or directory to search, from Root
@@ -147,12 +150,59 @@ type Result struct {
 	Truncated bool    // Limit was hit
 }
 
-// SplitTerms splits a query into its space-separated terms. A line matches a
-// search only if every term matches it.
-func SplitTerms(q string) []string { return strings.Fields(q) }
+// Terms splits the query into the terms that must all match a line. A regex
+// query splits on spaces; a literal query is one phrase, trimmed.
+func (r Request) Terms() []string {
+	if r.Literal {
+		if q := strings.TrimSpace(r.Query); q != "" {
+			return []string{q}
+		}
+		return nil
+	}
+	return strings.Fields(r.Query)
+}
+
+// Patterns compiles each term as a Go regexp that matches what ripgrep would,
+// so matches can be found again in text ripgrep never saw. Go's syntax is
+// close to ripgrep's but not identical; a term Go can't compile is an error.
+func (r Request) Patterns() ([]*regexp.Regexp, error) {
+	var out []*regexp.Regexp
+	for _, t := range r.Terms() {
+		expr := t
+		if r.Literal {
+			expr = regexp.QuoteMeta(t)
+		}
+		if r.Case == IgnoreCase || r.Case == SmartCase && !hasUpper(t, r.Literal) {
+			expr = "(?i)" + expr
+		}
+		re, err := regexp.Compile(expr)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, re)
+	}
+	return out, nil
+}
+
+// hasUpper reports whether term has a capital letter, as ripgrep's smart case
+// sees it: in a regex, an escape such as \W or \S is not a capital.
+func hasUpper(term string, literal bool) bool {
+	escaped := false
+	for _, c := range term {
+		switch {
+		case escaped:
+			escaped = false
+		case c == '\\' && !literal:
+			escaped = true
+		case unicode.IsUpper(c):
+			return true
+		}
+	}
+	return false
+}
 
 // Run searches with ripgrep. Directory scopes only search markdown files; a
-// single file is searched whatever its extension. Space-separated terms are
+// single file is searched whatever its extension. The terms (see Terms) are
 // ANDed: a line matches only if every term matches it, and then carries the
 // spans of every term, so the results list and the pane highlight them all.
 func Run(parent context.Context, req Request) (Result, error) {
@@ -168,7 +218,7 @@ func Run(parent context.Context, req Request) (Result, error) {
 	default:
 		limit = DefaultLimit
 	}
-	terms := SplitTerms(req.Query)
+	terms := req.Terms()
 	if len(terms) == 0 {
 		return Result{}, nil
 	}

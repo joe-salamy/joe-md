@@ -6,6 +6,7 @@ import (
 
 	"github.com/joe-salamy/joe-md/internal/config"
 	"github.com/joe-salamy/joe-md/internal/doc"
+	"github.com/joe-salamy/joe-md/internal/search"
 
 	"github.com/charmbracelet/x/ansi"
 )
@@ -25,6 +26,59 @@ func TestFindTerms(t *testing.T) {
 	got = findTerms("abcdef", []string{"abc", "cde"})
 	if len(got) != 1 || got[0] != (cellRange{0, 5}) {
 		t.Fatalf("merge: %v", got)
+	}
+}
+
+func TestFindPatterns(t *testing.T) {
+	pats, err := search.Request{Query: `\bup\b 日本`}.Patterns()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Cells, not bytes: the wide characters take two cells each.
+	got := findPatterns("setup 日本 Up", pats)
+	want := []cellRange{{6, 10}, {11, 13}}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("got %v want %v", got, want)
+	}
+	// Empty matches are not highlights.
+	pats, _ = search.Request{Query: "x*"}.Patterns()
+	if got := findPatterns("abc", pats); got != nil {
+		t.Fatalf("empty matches: %v", got)
+	}
+}
+
+// Highlights follow the query, not just the strings ripgrep matched.
+func TestMatchesUsePatterns(t *testing.T) {
+	p := testPane(t, "setup is up and UP\n")
+	line := func(req search.Request, spans ...[2]int) []cellRange {
+		m := newMatches(req, []search.Match{{Line: 1, Text: "setup is up and UP", Spans: spans}})
+		p.setMatches(m)
+		return m.hits[m.target[0]]
+	}
+	hitText := func(hs []cellRange) []string {
+		plain := ansi.Strip(p.view.Lines[p.match.target[0]])
+		var out []string
+		for _, h := range hs {
+			out = append(out, ansi.Cut(plain, h.start, h.end))
+		}
+		return out
+	}
+
+	// \b keeps "setup" plain; sensitive case keeps "UP" plain.
+	hs := line(search.Request{Query: `\bup\b`, Mode: search.Mode{Case: search.MatchCase}}, [2]int{9, 11})
+	if got := hitText(hs); len(got) != 1 || got[0] != "up" {
+		t.Fatalf("sensitive \\bup\\b: %q", got)
+	}
+	// Ignoring case, "UP" is a match too.
+	hs = line(search.Request{Query: `\bup\b`}, [2]int{9, 11}, [2]int{16, 18})
+	if got := hitText(hs); len(got) != 2 || got[0] != "up" || got[1] != "UP" {
+		t.Fatalf("ignore case: %q", got)
+	}
+	// ^ anchors the source line, not the indented rendering: fall back to the
+	// matched strings.
+	hs = line(search.Request{Query: `^setup`}, [2]int{0, 5})
+	if got := hitText(hs); len(got) != 1 || got[0] != "setup" {
+		t.Fatalf("fallback: %q", got)
 	}
 }
 

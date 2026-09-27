@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -116,19 +117,53 @@ func TestRun(t *testing.T) {
 	}
 }
 
-func TestSplitTerms(t *testing.T) {
-	if got := SplitTerms(""); len(got) != 0 {
-		t.Fatalf("empty query: %v", got)
-	}
-	got := SplitTerms("  alpha\tneedle\nomega  ")
-	want := []string{"alpha", "needle", "omega"}
-	if len(got) != len(want) {
-		t.Fatalf("got %q want %q", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("got %q want %q", got, want)
+func TestTerms(t *testing.T) {
+	for _, tc := range []struct {
+		q       string
+		literal bool
+		want    []string
+	}{
+		{"", false, nil},
+		{"  alpha\tneedle\nomega  ", false, []string{"alpha", "needle", "omega"}},
+		{"   ", true, nil},
+		// A literal query is one phrase, trimmed.
+		{"  shut up ", true, []string{"shut up"}},
+	} {
+		got := Request{Query: tc.q, Mode: Mode{Literal: tc.literal}}.Terms()
+		if strings.Join(got, "|") != strings.Join(tc.want, "|") || len(got) != len(tc.want) {
+			t.Errorf("Terms(%q, literal=%v) = %q, want %q", tc.q, tc.literal, got, tc.want)
 		}
+	}
+}
+
+func TestPatterns(t *testing.T) {
+	for _, tc := range []struct {
+		q    string
+		mode Mode
+		text string
+		want []string // what each pattern finds in text, joined by ","
+	}{
+		{`\bup\b`, Mode{}, "setup UP up", []string{"UP,up"}},
+		{"up", Mode{Case: MatchCase}, "setup UP up", []string{"up,up"}},
+		{"Up", Mode{Case: SmartCase}, "Up up", []string{"Up"}},
+		{"up", Mode{Case: SmartCase}, "Up up", []string{"Up,up"}},
+		// An escape is not a capital for smart case.
+		{`up\W`, Mode{Case: SmartCase}, "UP! up!", []string{"UP!,up!"}},
+		{"a.b c", Mode{Literal: true}, "a.b c, axb c, A.B C", []string{"a.b c,A.B C"}},
+		{"alpha needle", Mode{}, "Alpha needle", []string{"Alpha", "needle"}},
+	} {
+		pats, err := Request{Query: tc.q, Mode: tc.mode}.Patterns()
+		if err != nil || len(pats) != len(tc.want) {
+			t.Fatalf("%q: %v %v", tc.q, pats, err)
+		}
+		for i, re := range pats {
+			if got := strings.Join(re.FindAllString(tc.text, -1), ","); got != tc.want[i] {
+				t.Errorf("%q (%+v) in %q: %q, want %q", tc.q, tc.mode, tc.text, got, tc.want[i])
+			}
+		}
+	}
+	if _, err := (Request{Query: "("}).Patterns(); err == nil {
+		t.Error("a bad regex should be an error")
 	}
 }
 
@@ -181,11 +216,11 @@ func TestRunMultiTerm(t *testing.T) {
 		t.Fatalf("dir scope: %+v %v", res, err)
 	}
 
-	// Literal mode applies per term.
-	d := write("d.md", "a.b plus c\naxb plus c\n")
-	res, err = Run(ctx, Request{Query: "a.b c", Mode: Mode{Literal: true}, Scope: File, Root: d})
-	if err != nil || len(res.Matches) != 1 || res.Matches[0].Line != 1 {
-		t.Fatalf("literal AND: %+v %v", res, err)
+	// A literal query is one phrase, not terms to AND.
+	d := write("d.md", "a.b plus c\naxb plus c\nsay a.b c\n")
+	res, err = Run(ctx, Request{Query: " a.b c ", Mode: Mode{Literal: true}, Scope: File, Root: d})
+	if err != nil || len(res.Matches) != 1 || res.Matches[0].Line != 3 {
+		t.Fatalf("literal phrase: %+v %v", res, err)
 	}
 
 	// A repeated term runs once: no duplicated spans.

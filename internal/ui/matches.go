@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"regexp"
 	"sort"
 	"strings"
 	"unicode"
@@ -14,9 +15,11 @@ import (
 // Search matches come from ripgrep as source lines, but the pane shows
 // glamour's output, where markup is gone and lines are re-wrapped. So each
 // match is placed in two steps: the source line picks its block, then the
-// matched text is looked up (case-insensitively) in that block's rendered
-// lines. If the text is not visible there (say it was a link URL), the line
-// estimated from the source position gets a gutter mark instead.
+// query's terms are matched again, as Go regexps, in that block's rendered
+// lines. If they match nothing there (say the term is anchored with ^), the
+// strings ripgrep matched are looked up instead, ignoring case. If the text is
+// not visible either way (say it was a link URL), the line estimated from the
+// source position gets a gutter mark.
 
 // cellRange is a highlighted run of cells [start, end) on a rendered line.
 type cellRange struct{ start, end int }
@@ -24,9 +27,10 @@ type cellRange struct{ start, end int }
 type matches struct {
 	query string
 	mode  search.Mode
-	lines []int    // 0-based source lines with a match, distinct, in target order
-	terms []string // matched text, used to find matches in rendered lines
-	cur   int      // current match, or -1
+	lines []int            // 0-based source lines with a match, distinct, in target order
+	pats  []*regexp.Regexp // the query's terms, to find matches in rendered lines
+	terms []string         // matched text, the fallback when pats find nothing
+	cur   int              // current match, or -1
 
 	// Derived from a rendering by index. doc and view are what it was
 	// indexed against, so an index built off the UI thread can be checked.
@@ -55,7 +59,8 @@ func newMatches(req search.Request, ms []search.Match) *matches {
 		}
 	}
 	sort.Ints(lines)
-	return &matches{query: req.Query, mode: req.Mode, lines: compactInts(lines), terms: terms, cur: -1}
+	pats, _ := req.Patterns() // on an error, the matched strings will do
+	return &matches{query: req.Query, mode: req.Mode, lines: compactInts(lines), pats: pats, terms: terms, cur: -1}
 }
 
 // SetMatches highlights search matches in the pane. lines are 0-based source
@@ -211,17 +216,26 @@ func (m *matches) index(d *doc.Doc, v *doc.Rendered) {
 }
 
 // findInBlock records the highlights in block b and returns the rendered
-// lines that have any.
+// lines that have any. The query's patterns come first; the matched strings
+// only if the patterns find nothing in the block.
 func (m *matches) findInBlock(v *doc.Rendered, b int) []int {
 	start, end := v.BlockSpan(b)
-	var lines []int
-	for r := start; r < end; r++ {
-		if hs := findTerms(ansi.Strip(v.Lines[r]), m.terms); len(hs) > 0 {
-			m.hits[r] = hs
-			lines = append(lines, r)
+	find := func(f func(string) []cellRange) []int {
+		var lines []int
+		for r := start; r < end; r++ {
+			if hs := f(ansi.Strip(v.Lines[r])); len(hs) > 0 {
+				m.hits[r] = hs
+				lines = append(lines, r)
+			}
+		}
+		return lines
+	}
+	if len(m.pats) > 0 {
+		if lines := find(func(l string) []cellRange { return findPatterns(l, m.pats) }); len(lines) > 0 {
+			return lines
 		}
 	}
-	return lines
+	return find(func(l string) []cellRange { return findTerms(l, m.terms) })
 }
 
 // nearest returns the element of sorted xs closest to x, preferring the later
@@ -268,6 +282,39 @@ func findTerms(line string, terms []string) []cellRange {
 			}
 		}
 	}
+	return mergeRanges(out)
+}
+
+// findPatterns returns the cells of plain-text line that match any pattern,
+// merged and sorted. Empty matches are skipped.
+func findPatterns(line string, pats []*regexp.Regexp) []cellRange {
+	if line == "" || len(pats) == 0 {
+		return nil
+	}
+	var cells []int // cells[i] is the column where byte i starts, once needed
+	var out []cellRange
+	for _, re := range pats {
+		for _, loc := range re.FindAllStringIndex(line, -1) {
+			if loc[0] == loc[1] {
+				continue
+			}
+			if cells == nil {
+				cells = make([]int, len(line)+1)
+				col := 0
+				for i, r := range line {
+					cells[i] = col
+					col += ansi.StringWidth(string(r))
+				}
+				cells[len(line)] = col
+			}
+			out = append(out, cellRange{cells[loc[0]], cells[loc[1]]})
+		}
+	}
+	return mergeRanges(out)
+}
+
+// mergeRanges sorts out and merges the ranges that overlap.
+func mergeRanges(out []cellRange) []cellRange {
 	if len(out) == 0 {
 		return nil
 	}

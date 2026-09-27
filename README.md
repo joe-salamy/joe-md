@@ -79,7 +79,7 @@ tabs = true
 
 [search]
 scope = "dir"           # where ? starts: file, dir or repo
-literal = false         # fixed strings (rg -F) instead of regexes
+literal = false         # one fixed string (rg -F), not regexes
 case = "smart"          # ignore (rg -i), smart (rg -S) or sensitive
 
 [theme]                 # ANSI 0-255 or "#rrggbb"; see -dump-config for all
@@ -274,16 +274,24 @@ vim's quickfix, instead of opening a tab each. The opened file's matches are
 highlighted and `n` / `N` step through them. A file search belongs to the pane
 it was typed in.
 
-Separate terms with spaces to require them all: `alpha needle` matches only
-lines containing both, in any order, and highlights each one, the same AND the
-file menu's filter uses. `alpha|needle` still matches lines with either, and a
-phrase with a space is one regex term: `alpha\s+needle`.
+In regex mode, separate terms with spaces to require them all: `alpha needle`
+matches only lines containing both, in any order, and highlights each one, the
+same AND the file menu's filter uses. `alpha|needle` still matches lines with
+either, and a phrase with a space is one regex term: `alpha\s+needle`. In
+literal mode the whole query is one phrase, spaces included (trimmed at the
+ends): `shut up` matches only those words side by side. ripgrep searches one
+line at a time, so a phrase broken across two source lines is not found.
 
 Matches are found in the markdown source but you read the rendered text, so
-joe-md looks for the matched text in the rendered lines of the block ripgrep
-matched and highlights it there, with the current match in a stronger colour.
-When the text is not visible in the rendering (an HTML attribute, say), the
-line gets a mark in the left margin instead. After `r` or an edit in micro
+joe-md runs the query again (as Go regexps, with the same case rule) over the
+rendered lines of each block ripgrep matched, and highlights what it finds
+there, with the current match in a stronger colour. So `\bup\b` leaves the
+"up" in "setup" alone, and a case-sensitive search leaves other cases alone.
+Highlights cover the whole block, so a paragraph whose source line 3 matches
+also highlights the query on line 1. When the query matches nothing in the
+rendering (it is anchored with `^`, say), the text ripgrep matched is looked
+up instead, ignoring case. When that text is not visible either (an HTML
+attribute, say), the line gets a mark in the left margin instead. After `r` or an edit in micro
 the search re-runs so the highlights follow the new text.
 
 ## How line tracking works
