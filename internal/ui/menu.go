@@ -138,17 +138,51 @@ func listDir(dir string) ([]entry, error) {
 		if es[i].dir != es[j].dir {
 			return es[i].dir
 		}
-		li, lj := strings.ToLower(es[i].name), strings.ToLower(es[j].name)
-		if li != lj {
-			return li < lj
-		}
-		return es[i].name < es[j].name
+		return naturalLess(es[i].name, es[j].name)
 	})
 	if filepath.Dir(dir) != dir {
 		es = append([]entry{{name: "..", dir: true, parent: true}}, es...)
 	}
 	return es, nil
 }
+
+// naturalLess orders names case-insensitively, comparing runs of digits by
+// value so "2. Foo" comes before "10. Bar". Ties fall back to the raw names.
+func naturalLess(a, b string) bool {
+	la, lb := strings.ToLower(a), strings.ToLower(b)
+	i, j := 0, 0
+	for i < len(la) && j < len(lb) {
+		if isDigit(la[i]) && isDigit(lb[j]) {
+			si, sj := i, j
+			for i < len(la) && isDigit(la[i]) {
+				i++
+			}
+			for j < len(lb) && isDigit(lb[j]) {
+				j++
+			}
+			na := strings.TrimLeft(la[si:i], "0")
+			nb := strings.TrimLeft(lb[sj:j], "0")
+			if len(na) != len(nb) {
+				return len(na) < len(nb)
+			}
+			if na != nb {
+				return na < nb
+			}
+			continue
+		}
+		if la[i] != lb[j] {
+			return la[i] < lb[j]
+		}
+		i++
+		j++
+	}
+	if len(la)-i != len(lb)-j {
+		return len(la)-i < len(lb)-j
+	}
+	return a < b
+}
+
+func isDigit(c byte) bool { return '0' <= c && c <= '9' }
 
 // gitIgnored asks git which entries of dir are ignored. Outside a repository
 // (or without git) nothing is.
