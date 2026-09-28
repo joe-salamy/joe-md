@@ -454,3 +454,20 @@ func TestReadmeConfigExample(t *testing.T) {
 		t.Fatalf("README example keys: %v", err)
 	}
 }
+
+func TestStatusKeepsPositionWithLongName(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, strings.Repeat("very-long-name-", 10)+".md")
+	if err := os.WriteFile(p, []byte("# t\n\ntext\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := newTestApp(t, p)
+	a.Update(tea.WindowSizeMsg{Width: 60, Height: 30})
+	s := ansi.Strip(a.statusLine())
+	if ansi.StringWidth(s) != 60 {
+		t.Errorf("status should be exactly the width, got %d: %q", ansi.StringWidth(s), s)
+	}
+	if !strings.HasSuffix(s, "Ln 1/3  All ") || !strings.Contains(s, "…") {
+		t.Errorf("status should keep the position and elide the name: %q", s)
+	}
+}

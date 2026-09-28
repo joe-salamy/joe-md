@@ -621,7 +621,14 @@ func (a *App) statusLine() string {
 
 	gap := a.width - ansi.StringWidth(left) - ansi.StringWidth(right)
 	if gap < 1 {
-		return ansi.Truncate(left+th.status.Render(" ")+right, a.width, "")
+		// Squeeze the left side (name, tab count, message) so the position
+		// stays visible; drop the pending keys first if it still won't fit.
+		if a.width-ansi.StringWidth(right) < ansi.StringWidth(mode)+2 {
+			right = th.status.Render(pos)
+		}
+		left = ansi.Truncate(left, max(a.width-ansi.StringWidth(right)-1, 0), "…")
+		gap = max(a.width-ansi.StringWidth(left)-ansi.StringWidth(right), 1)
+		return fit(left+th.status.Render(strings.Repeat(" ", gap))+right, a.width)
 	}
 	return left + th.status.Render(strings.Repeat(" ", gap)) + right
 }
