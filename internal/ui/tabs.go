@@ -205,6 +205,23 @@ func (a *App) stepTab(n int) {
 	a.syncTOC()
 }
 
+// moveTab is << / >>: the current tab n places to the right (left if
+// n < 0), stopping at the ends.
+func (a *App) moveTab(n int) {
+	if len(a.tabs) == 0 {
+		return
+	}
+	to := max(0, min(a.cur+n, len(a.tabs)-1))
+	if to == a.cur {
+		a.msg = "tab is already at the end"
+		return
+	}
+	t := a.tabs[a.cur]
+	a.tabs = append(a.tabs[:a.cur], a.tabs[a.cur+1:]...)
+	a.tabs = append(a.tabs[:to], append([]*Tab{t}, a.tabs[to:]...)...)
+	a.cur = to
+}
+
 func (a *App) tabBarHeight() int {
 	if a.showTabs && len(a.tabs) > 0 {
 		return 1

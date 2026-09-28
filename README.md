@@ -151,6 +151,7 @@ one page, and `f1` (or `g?`) shows them inside joe-md, as currently bound:
 | `gt` `gT`                    | next / previous tab (wraps)         |
 | `{n}gt` `alt+1`…`alt+9`      | go to tab *n*                       |
 | `{n}gT`                      | *n* tabs back                       |
+| `<<` `>>`                     | move the tab left / right (`{n}>>` moves *n* places; stops at the ends) |
 | `x`                          | close the tab and all its panes (not the last tab) |
 | `alt+t`                      | show / hide the tab bar             |
 

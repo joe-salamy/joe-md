@@ -124,6 +124,24 @@ func TestTabsOpenDedupeClose(t *testing.T) {
 		t.Fatalf("alt+1: cur %d", a.cur)
 	}
 
+	// << and >> move the current tab, stopping at the ends.
+	press(a, ">", ">")
+	if got := tabNames(a); got != "c.md a.md d.md" || a.cur != 1 || a.pane.doc.Name != "a.md" {
+		t.Fatalf(">>: tabs %q cur %d", got, a.cur)
+	}
+	press(a, "5", ">", ">")
+	if got := tabNames(a); got != "c.md d.md a.md" || a.cur != 2 {
+		t.Fatalf("5>>: tabs %q cur %d", got, a.cur)
+	}
+	press(a, "2", "<", "<")
+	if got := tabNames(a); got != "a.md c.md d.md" || a.cur != 0 {
+		t.Fatalf("2<<: tabs %q cur %d", got, a.cur)
+	}
+	press(a, "<", "<")
+	if got := tabNames(a); got != "a.md c.md d.md" || a.cur != 0 {
+		t.Fatalf("<< at the start: tabs %q cur %d", got, a.cur)
+	}
+
 	// x closes, q closes, and q on the last tab quits.
 	press(a, "x")
 	if got := tabNames(a); got != "c.md d.md" || a.pane.doc.Name != "c.md" {
