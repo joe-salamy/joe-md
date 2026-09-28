@@ -124,44 +124,54 @@ func (p *Pane) MatchPos() (cur, total int) {
 	return p.match.cur + 1, len(p.match.lines)
 }
 
-// JumpMatch moves to the n-th match below (n > 0) or above (n < 0) the top of
-// the pane, wrapping around the ends. With inclusive, a match exactly at the
-// top counts as the first one below. It reports false if there are no matches.
+// JumpMatch moves to the n-th match after (n > 0) or before (n < 0) the
+// current one, wrapping around the ends, and scrolls only if that match is
+// out of view. If the current match is out of view (or there is none), it
+// counts from the top of the pane instead. With inclusive, it is a new search:
+// the first match counts from the top, so a match in view is not scrolled to.
+// It reports false if there are no matches.
 func (p *Pane) JumpMatch(n int, inclusive bool) (wrapped, ok bool) {
 	m := p.match
 	if m == nil || len(m.target) == 0 || n == 0 {
 		return false, false
 	}
-	for step := 0; step < max(n, -n); step++ {
-		var i int
-		if n > 0 {
-			i = sort.Search(len(m.target), func(i int) bool {
-				return m.target[i] > p.offset || inclusive && m.target[i] == p.offset
-			})
-			if i == len(m.target) {
-				i, wrapped = 0, true
-			}
-		} else {
-			i = sort.Search(len(m.target), func(i int) bool { return m.target[i] >= p.offset }) - 1
-			if i < 0 {
-				i, wrapped = len(m.target)-1, true
-			}
-		}
-		m.cur = i
-		p.ScrollTo(m.target[i])
-		inclusive = false
+	count := len(m.target)
+	var i int
+	switch {
+	case !inclusive && m.cur >= 0 && m.cur < count && p.visible(m.target[m.cur]):
+		i = m.cur + sign(n)
+	case n > 0:
+		i = sort.Search(count, func(i int) bool {
+			return m.target[i] > p.offset || inclusive && m.target[i] == p.offset
+		})
+	default:
+		i = sort.Search(count, func(i int) bool { return m.target[i] >= p.offset }) - 1
 	}
+	i += n - sign(n)
+	wrapped = i < 0 || i >= count
+	m.cur = (i%count + count) % count
+	p.reveal(m.target[m.cur])
 	return wrapped, true
 }
 
-// GotoMatchLine jumps to the match on 0-based source line src, or to the line
-// itself if it has no match.
+func sign(n int) int {
+	if n < 0 {
+		return -1
+	}
+	return 1
+}
+
+// visible reports whether rendered line r is in view.
+func (p *Pane) visible(r int) bool { return r >= p.offset && r < p.offset+p.height }
+
+// GotoMatchLine jumps to the match on 0-based source line src (scrolling
+// only if it is out of view), or to the line itself if it has no match.
 func (p *Pane) GotoMatchLine(src int) {
 	if m := p.match; m != nil && m.target != nil {
 		for i, l := range m.lines {
 			if l == src {
 				m.cur = i
-				p.ScrollTo(m.target[i])
+				p.reveal(m.target[i])
 				return
 			}
 		}

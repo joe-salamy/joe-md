@@ -22,6 +22,14 @@ type Pane struct {
 	match  *matches
 	toc    TOC  // the sidebar's state while this pane has focus
 	bind   bool // scrollbind: scrolls with the tab's other bound panes
+
+	// pin is the heading GotoHeading last jumped to. A heading near the end
+	// can't be scrolled to the top, so it counts as the current heading for as
+	// long as the pane stays where the jump left it.
+	pin struct {
+		heading, offset int
+		ok              bool
+	}
 }
 
 func NewPane(d *doc.Doc) *Pane { return &Pane{doc: d} }
@@ -52,6 +60,7 @@ func (p *Pane) Layout(r *doc.Renderer, width, height, maxWrap int) error {
 		return err
 	}
 	p.view, p.wrap = v, wrap
+	p.pin.ok = false
 	p.indexMatches()
 	p.GotoSource(anchor)
 	return nil
@@ -100,11 +109,12 @@ func (p *Pane) GotoHeading(h int) {
 	if p.view == nil || h < 0 || h >= len(p.doc.Headings) {
 		return
 	}
-	p.ScrollTo(p.view.HeadingLine(p.doc, h))
+	p.jumpTo(p.view.HeadingLine(p.doc, h))
+	p.pin.heading, p.pin.offset, p.pin.ok = h, p.offset, true
 }
 
-// ScrollTo puts line at the top of the pane. Like vim, jumps may scroll past
-// the end so that a heading near the bottom can still sit at the top.
+// ScrollTo puts line at the top of the pane. It may scroll past the end, so
+// that a source line (say, micro's cursor line) is always at the top.
 func (p *Pane) ScrollTo(line int) {
 	last := 0
 	if p.view != nil {
@@ -124,6 +134,18 @@ func (p *Pane) ScrollBy(n int) {
 }
 
 func (p *Pane) ScrollToBottom() { p.ScrollTo(p.maxOffset()) }
+
+// jumpTo puts line at the top of the pane, but never scrolls past the point
+// where the last line is at the bottom.
+func (p *Pane) jumpTo(line int) { p.ScrollTo(min(line, p.maxOffset())) }
+
+// reveal scrolls line to the top of the pane (as jumpTo) unless it is
+// already in view.
+func (p *Pane) reveal(line int) {
+	if !p.visible(line) {
+		p.jumpTo(line)
+	}
+}
 
 // ScrollToSource puts source line src at the top. Moving down, it stops once
 // the last line is visible, like ScrollBy.
@@ -159,9 +181,13 @@ func (p *Pane) top() int {
 }
 
 // CurrentHeading is the last heading at or above the top of the pane, or -1.
+// After a jump to a heading that couldn't reach the top, it is that heading.
 func (p *Pane) CurrentHeading() int {
 	if p.view == nil {
 		return -1
+	}
+	if p.pin.ok && p.pin.offset == p.offset && p.pin.heading < len(p.doc.Headings) {
+		return p.pin.heading
 	}
 	top := p.top()
 	return sort.Search(len(p.doc.Headings), func(i int) bool {
@@ -187,8 +213,8 @@ func (p *Pane) NextHeading(n int) int {
 }
 
 // Percent is how far through the document the pane is, in vim's style.
-// After a jump past the end (so a heading can sit at the top) it is the
-// share of the document above the top line.
+// After a jump past the end (to a source line) it is the share of the
+// document above the top line.
 func (p *Pane) Percent() string {
 	switch m := p.maxOffset(); {
 	case p.offset > m:

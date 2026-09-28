@@ -160,7 +160,7 @@ func TestMatchesHighlightAndJump(t *testing.T) {
 		if wrapped, ok := p.JumpMatch(1, i == 0); !ok || wrapped {
 			t.Fatalf("jump %d: ok=%v wrapped=%v", i, ok, wrapped)
 		}
-		if cur, _ := p.MatchPos(); cur != i+1 || p.offset != m.target[i] {
+		if cur, _ := p.MatchPos(); cur != i+1 || !p.visible(m.target[i]) || p.offset > p.maxOffset() {
 			t.Fatalf("jump %d: cur %d offset %d", i, cur, p.offset)
 		}
 	}
@@ -178,6 +178,79 @@ func TestMatchesHighlightAndJump(t *testing.T) {
 	}
 	if !strings.Contains(ansi.Strip(p.decorate(m.target[1], p.view.Lines[m.target[1]], newTheme(true, "dark", config.Theme{}))), "▌") {
 		t.Fatal("gutter mark not drawn")
+	}
+}
+
+// Jumps to a match scroll only when it is out of view, and never past the end.
+func TestMatchJumpsScrollOnlyWhenNeeded(t *testing.T) {
+	var sb strings.Builder
+	for i := range 30 {
+		if i == 0 || i == 1 || i == 20 || i == 29 {
+			sb.WriteString("needle\n\n")
+		} else {
+			sb.WriteString("hay\n\n")
+		}
+	}
+	p := testPane(t, sb.String())
+	p.SetMatches("needle", []int{0, 2, 40, 58}, []string{"needle"})
+	m := p.match
+	if len(m.target) != 4 {
+		t.Fatalf("targets %v", m.target)
+	}
+
+	// A new search with matches in view highlights the uppermost, in place.
+	p.JumpMatch(1, true)
+	if p.match.cur != 0 || p.offset != 0 {
+		t.Fatalf("new search: cur %d offset %d", p.match.cur, p.offset)
+	}
+	// n to a match in view doesn't scroll either.
+	p.JumpMatch(1, false)
+	if p.match.cur != 1 || p.offset != 0 {
+		t.Fatalf("n in view: cur %d offset %d", p.match.cur, p.offset)
+	}
+	// n to a match out of view puts it at the top.
+	p.JumpMatch(1, false)
+	if p.match.cur != 2 || p.offset != m.target[2] {
+		t.Fatalf("n out of view: cur %d offset %d", p.match.cur, p.offset)
+	}
+	// The last match can't reach the top: the view stops at the end.
+	p.JumpMatch(1, false)
+	if p.match.cur != 3 || p.offset != p.maxOffset() || !p.visible(m.target[3]) {
+		t.Fatalf("n at the end: cur %d offset %d max %d", p.match.cur, p.offset, p.maxOffset())
+	}
+	// Wrapping counts from the current match, not the top of the view.
+	if wrapped, _ := p.JumpMatch(1, false); !wrapped || p.match.cur != 0 || p.offset != m.target[0] {
+		t.Fatalf("wrap: cur %d offset %d", p.match.cur, p.offset)
+	}
+	if wrapped, _ := p.JumpMatch(-1, false); !wrapped || p.match.cur != 3 || p.offset != p.maxOffset() {
+		t.Fatalf("N wrap: cur %d offset %d", p.match.cur, p.offset)
+	}
+	// Once the current match is scrolled out of view, n counts from the top.
+	p.ScrollTo(m.target[1] + 1)
+	p.JumpMatch(1, false)
+	if p.match.cur != 2 {
+		t.Fatalf("n after scrolling away: cur %d", p.match.cur)
+	}
+	// A new search below the view scrolls to the first match below the top.
+	p.ScrollTo(m.target[1] + 1)
+	p.match.cur = -1
+	p.JumpMatch(1, true)
+	if p.match.cur != 2 || p.offset != m.target[2] {
+		t.Fatalf("new search out of view: cur %d offset %d", p.match.cur, p.offset)
+	}
+	// A counted jump steps from the current match.
+	p.JumpMatch(-2, false)
+	if p.match.cur != 0 || p.offset != m.target[0] {
+		t.Fatalf("2N: cur %d offset %d", p.match.cur, p.offset)
+	}
+	// Opening a result in view doesn't scroll; one out of view is capped.
+	p.GotoMatchLine(2)
+	if p.match.cur != 1 || p.offset != m.target[0] {
+		t.Fatalf("result in view: cur %d offset %d", p.match.cur, p.offset)
+	}
+	p.GotoMatchLine(58)
+	if p.match.cur != 3 || p.offset != p.maxOffset() {
+		t.Fatalf("result at the end: cur %d offset %d", p.match.cur, p.offset)
 	}
 }
 
