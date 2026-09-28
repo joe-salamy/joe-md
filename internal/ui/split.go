@@ -3,6 +3,7 @@ package ui
 import (
 	"bytes"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -157,6 +158,20 @@ func (n *Node) replace(m *Node) {
 	}
 }
 
+// merge dissolves inner node n into its parent when both lay their children
+// out the same way, which a split tree never does.
+func (n *Node) merge() {
+	gp := n.parent
+	if gp == nil || n.pane != nil || gp.vert != n.vert {
+		return
+	}
+	j := n.index()
+	for _, k := range n.kids {
+		k.parent, k.frac = gp, k.frac*n.frac
+	}
+	gp.kids = slices.Concat(gp.kids[:j], n.kids, gp.kids[j+1:])
+}
+
 // Tab is one tab page: a split tree of panes, one of which has focus.
 // Search results, history and the bar/sidebar toggles are shared by all tabs.
 type Tab struct {
@@ -189,27 +204,49 @@ func (t *Tab) leafOf(path string) *Node {
 }
 
 // split puts p next to the focused pane, right of it (vert) or below, and
-// focuses it. Like vim, splitting in a node's own direction adds a sibling
-// that halves the focused pane; otherwise the pane becomes a new node.
+// focuses it.
 func (t *Tab) split(p *Pane, vert bool) {
-	f := t.focus
 	n := leaf(p)
-	if par := f.parent; par != nil && par.vert == vert {
-		i := f.index()
-		f.frac /= 2
-		n.frac, n.parent = f.frac, par
-		par.kids = append(par.kids[:i+1], append([]*Node{n}, par.kids[i+1:]...)...)
+	t.insert(n, t.focus, vert, false, 0.5)
+	t.focus = n
+}
+
+// insert puts leaf n beside node m (vert) or above or below it, before or
+// after it, giving n share of m's space. Like vim, inserting in a node's own
+// direction adds a sibling; otherwise m becomes a new node holding both.
+func (t *Tab) insert(n, m *Node, vert, before bool, share float64) {
+	share = max(0.1, min(share, 0.9))
+	var in *Node
+	if par := m.parent; par != nil && par.vert == vert {
+		in = par
+		n.frac = m.frac * share
+		m.frac -= n.frac
 	} else {
-		in := &Node{vert: vert}
-		f.replace(in)
-		if f == t.root {
+		in = &Node{vert: vert}
+		m.replace(in)
+		if m == t.root {
 			t.root = in
 		}
-		f.parent, f.frac = in, 0.5
-		n.parent, n.frac = in, 0.5
-		in.kids = []*Node{f, n}
+		in.kids = []*Node{m}
+		m.parent, m.frac = in, 1-share
+		n.frac = share
 	}
-	t.focus = n
+	n.parent = in
+	i := m.index()
+	if !before {
+		i++
+	}
+	in.kids = slices.Insert(in.kids, i, n)
+}
+
+// has reports whether node n is in the tab's tree.
+func (t *Tab) has(n *Node) bool {
+	for c := n; c != t.root; c = c.parent {
+		if c == nil || c.parent == nil || c.index() < 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // canSplit reports whether the focused pane has room to be split.
@@ -241,14 +278,7 @@ func (t *Tab) close() {
 		if par == t.root {
 			t.root = only
 		}
-		// A node left inside a parent of its own direction merges into it.
-		if gp := only.parent; gp != nil && only.pane == nil && gp.vert == only.vert {
-			j := only.index()
-			for _, k := range only.kids {
-				k.parent, k.frac = gp, k.frac*only.frac
-			}
-			gp.kids = append(gp.kids[:j], append(only.kids, gp.kids[j+1:]...)...)
-		}
+		only.merge()
 	}
 	ls := heir.leaves()
 	if next < i {

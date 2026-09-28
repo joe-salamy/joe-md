@@ -57,7 +57,8 @@ type App struct {
 	pane     *Pane
 	toc      *TOC
 	showTabs bool
-	drag     *border // pane border being dragged with the mouse
+	drag     *border   // pane border being dragged with the mouse
+	closed   []*closed // closed tabs and panes, newest last; see closed.go
 
 	menu    *Menu // the pop-up file menu, nil when closed; see menu.go
 	menuAll bool  // the menu lists hidden and non-markdown files too

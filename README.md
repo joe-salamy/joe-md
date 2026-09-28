@@ -153,6 +153,7 @@ one page, and `f1` (or `g?`) shows them inside joe-md, as currently bound:
 | `{n}gT`                      | *n* tabs back                       |
 | `<<` `>>`                     | move the tab left / right (`{n}>>` moves *n* places; stops at the ends) |
 | `x`                          | close the tab and all its panes (not the last tab) |
+| `X` `{n}X`                   | reopen the last closed tab or pane (or the last *n*) where it was |
 | `alt+t`                      | show / hide the tab bar             |
 
 Opening a file that is already open (from the menu or a search result)
@@ -162,6 +163,12 @@ pane's file, plus `+n` for its other panes.
 Click a tab to switch to it, middle-click to close it, or scroll the wheel over
 the bar to step through them. With the bar hidden, the status line shows
 `[n/total]`.
+
+`X` reopens closed tabs and panes newest first, each where it was: a tab at
+its old place in the bar, a pane back beside the pane that took its space, at
+its old size. After `ctrl+w o`, one `X` brings all the other panes back. A
+reopened pane keeps its scroll position and re-reads its file; one whose file
+has been deleted is skipped. The last 20 closes are kept, for this session only.
 
 ### Panes
 

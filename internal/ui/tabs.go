@@ -138,6 +138,7 @@ func (a *App) closePane() bool {
 	if !t.multi() {
 		return a.closeTab()
 	}
+	a.pushClosed(closedPaneOf(t))
 	t.close()
 	a.focusLeaf(t.focus)
 	return true
@@ -175,6 +176,7 @@ func (a *App) closeTab() bool {
 	if len(a.tabs) == 0 {
 		return false
 	}
+	a.pushClosed(&closed{kind: closedTab, tab: a.tabs[a.cur], idx: a.cur})
 	a.tabs = append(a.tabs[:a.cur], a.tabs[a.cur+1:]...)
 	if len(a.tabs) == 0 {
 		a.activate(0)

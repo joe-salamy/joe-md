@@ -266,6 +266,12 @@ func init() {
 					a.closeTab()
 				}
 			})},
+		&action{name: "reopen", desc: "reopen the last closed tab or pane where it was, or the last n", keys: keys("X"),
+			run: func(a *App, c call) tea.Cmd {
+				cmd := a.reopen(c.n)
+				a.syncTOC()
+				return cmd
+			}},
 		&action{name: "toggle_tab_bar", desc: "show / hide the tab bar", keys: keys("alt+t"),
 			run: do(func(a *App, c call) { a.showTabs = !a.showTabs; a.layout() })},
 	)
@@ -308,7 +314,7 @@ func init() {
 		&action{name: "prev_pane", desc: "previous pane", row: "next / previous pane, then results and sidebar", keys: keys("W"),
 			run: win(func(a *App, c call) { a.cycleFocus(-c.n) })},
 		&action{name: "only", desc: "close every other pane", keys: keys("o"),
-			run: win(func(a *App, c call) { a.tab().only(); a.layout() })},
+			run: win(func(a *App, c call) { a.closeOthers() })},
 		&action{name: "equalize", desc: "make all panes the same size", keys: keys("="),
 			run: win(func(a *App, c call) { a.tab().root.equalize(); a.layout() })},
 		&action{name: "wider", desc: "n columns wider", row: "n columns wider / narrower", keys: keys(">"), run: resize(true, 1)},
