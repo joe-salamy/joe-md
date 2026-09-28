@@ -18,6 +18,8 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+
+	"github.com/joe-salamy/joe-md/internal/natural"
 )
 
 // Scope is how much ripgrep searches around the current file.
@@ -146,7 +148,7 @@ func (m Match) Terms() []string {
 }
 
 type Result struct {
-	Matches   []Match // sorted by path, then line
+	Matches   []Match // sorted by path (natural.PathLess), then line
 	Files     int     // number of distinct files in Matches
 	Truncated bool    // Limit was hit
 }
@@ -374,7 +376,7 @@ func runOne(parent context.Context, rg string, req Request, term string, limit i
 	return ms, truncated, nil
 }
 
-// finish sorts matches by path, then line, and counts the files.
+// finish sorts matches by path, in menu order, then line, and counts the files.
 func finish(ms []Match, truncated bool) Result {
 	for i := range ms {
 		s := ms[i].Spans
@@ -387,7 +389,7 @@ func finish(ms []Match, truncated bool) Result {
 	}
 	sort.SliceStable(ms, func(i, j int) bool {
 		if ms[i].Path != ms[j].Path {
-			return ms[i].Path < ms[j].Path
+			return natural.PathLess(ms[i].Path, ms[j].Path)
 		}
 		return ms[i].Line < ms[j].Line
 	})
