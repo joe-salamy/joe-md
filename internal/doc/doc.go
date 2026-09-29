@@ -5,6 +5,8 @@ package doc
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -42,6 +44,9 @@ type Doc struct {
 	refs     string // link reference definitions, appended to every block
 }
 
+// ErrBinary is Load's error for a file that isn't text.
+var ErrBinary = errors.New("not a text file")
+
 // Load reads and parses the markdown file at path. The doc's path is
 // absolute, so file identity, display and editing never depend on how the
 // file was named on its way in.
@@ -50,6 +55,9 @@ func Load(path string) (*Doc, error) {
 	if err != nil {
 		return nil, err
 	}
+	if isBinary(src) {
+		return nil, fmt.Errorf("%s is %w", filepath.Base(path), ErrBinary)
+	}
 	d := Parse(src)
 	if abs, err := filepath.Abs(path); err == nil {
 		path = abs
@@ -57,6 +65,11 @@ func Load(path string) (*Doc, error) {
 	d.Path = path
 	d.Name = filepath.Base(path)
 	return d, nil
+}
+
+// isBinary guesses like git does: a NUL byte near the start.
+func isBinary(b []byte) bool {
+	return bytes.IndexByte(b[:min(len(b), 8000)], 0) >= 0
 }
 
 // md must use the same block-level extensions glamour uses so that our block

@@ -36,7 +36,7 @@ func TestInstall(t *testing.T) {
 	t.Setenv("MICRO_CONFIG_HOME", dir)
 	dst := filepath.Join(dir, "plug", "joemd", "joemd.lua")
 	for range 2 { // installing twice is harmless
-		if err := Install(); err != nil {
+		if err := install(); err != nil {
 			t.Fatal(err)
 		}
 		if b, err := os.ReadFile(dst); err != nil || !bytes.Equal(b, plugin) {
@@ -45,7 +45,7 @@ func TestInstall(t *testing.T) {
 	}
 	// An outdated copy is replaced.
 	os.WriteFile(dst, []byte("old"), 0o644)
-	if err := Install(); err != nil {
+	if err := install(); err != nil {
 		t.Fatal(err)
 	}
 	if b, _ := os.ReadFile(dst); !bytes.Equal(b, plugin) {

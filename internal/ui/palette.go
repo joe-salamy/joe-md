@@ -60,24 +60,6 @@ var palettes = map[string]palette{
 
 // over returns p with the colours set in t replacing its own.
 func (p palette) over(t config.Theme) palette {
-	pick := func(set, base string) string {
-		if set != "" {
-			return set
-		}
-		return base
-	}
-	b := &p.Theme
-	b.Accent = pick(t.Accent, b.Accent)
-	b.Text = pick(t.Text, b.Text)
-	b.Subtle = pick(t.Subtle, b.Subtle)
-	b.Dim = pick(t.Dim, b.Dim)
-	b.Bar = pick(t.Bar, b.Bar)
-	b.OnAccent = pick(t.OnAccent, b.OnAccent)
-	b.TOCMode = pick(t.TOCMode, b.TOCMode)
-	b.SearchMode = pick(t.SearchMode, b.SearchMode)
-	b.Match = pick(t.Match, b.Match)
-	b.MatchCurrent = pick(t.MatchCurrent, b.MatchCurrent)
-	b.TabInactive = pick(t.TabInactive, b.TabInactive)
-	b.Error = pick(t.Error, b.Error)
+	p.Theme = p.Theme.Over(t)
 	return p
 }

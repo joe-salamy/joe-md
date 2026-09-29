@@ -10,8 +10,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
-	"sort"
 	"strings"
 
 	"github.com/joe-salamy/joe-md/internal/search"
@@ -37,9 +37,9 @@ type Startup struct {
 }
 
 type Search struct {
-	Scope   string `toml:"scope"` // where ? starts: file, dir or repo
-	Literal bool   `toml:"literal"`
-	Case    string `toml:"case"` // ignore, smart or sensitive
+	Scope   search.Scope `toml:"scope"` // where ? starts: file, dir or repo
+	Literal bool         `toml:"literal"`
+	Case    search.Case  `toml:"case"` // ignore, smart or sensitive
 }
 
 // Theme colours are ANSI numbers ("39") or hex ("#7aa2f7"); empty keeps the
@@ -64,7 +64,7 @@ func Default() Config {
 		Style:   "auto",
 		Width:   120,
 		Startup: Startup{TOC: true, SearchBar: true, Tabs: true},
-		Search:  Search{Scope: "repo", Case: "ignore"},
+		Search:  Search{Scope: search.Repo, Case: search.IgnoreCase},
 	}
 }
 
@@ -133,12 +133,6 @@ func (c *Config) check() error {
 	if c.Width < 20 {
 		return fmt.Errorf("width %d: must be at least 20", c.Width)
 	}
-	if _, ok := search.ParseScope(c.Search.Scope); !ok {
-		return fmt.Errorf("search.scope %q: must be file, dir or repo", c.Search.Scope)
-	}
-	if _, ok := search.ParseCase(c.Search.Case); !ok {
-		return fmt.Errorf("search.case %q: must be ignore, smart or sensitive", c.Search.Case)
-	}
 	for name, v := range c.Theme.Colors() {
 		if v != "" && !colorRE.MatchString(v) {
 			return fmt.Errorf("theme.%s %q: must be an ANSI colour 0-255 or #rrggbb", name, v)
@@ -147,13 +141,26 @@ func (c *Config) check() error {
 	return nil
 }
 
-// Colors returns the theme by setting name.
+// Colors returns the theme by setting name. Every field of Theme is a
+// colour, so this and Over work from the fields themselves.
 func (t Theme) Colors() map[string]string {
-	return map[string]string{
-		"accent": t.Accent, "text": t.Text, "subtle": t.Subtle, "dim": t.Dim, "bar": t.Bar,
-		"on_accent": t.OnAccent, "toc_mode": t.TOCMode, "search_mode": t.SearchMode,
-		"match": t.Match, "match_current": t.MatchCurrent, "tab_inactive": t.TabInactive, "error": t.Error,
+	out := map[string]string{}
+	v := reflect.ValueOf(t)
+	for i := range v.NumField() {
+		out[v.Type().Field(i).Tag.Get("toml")] = v.Field(i).String()
 	}
+	return out
+}
+
+// Over returns t with the colours set in u replacing its own.
+func (t Theme) Over(u Theme) Theme {
+	tv, uv := reflect.ValueOf(&t).Elem(), reflect.ValueOf(u)
+	for i := range tv.NumField() {
+		if s := uv.Field(i).String(); s != "" {
+			tv.Field(i).SetString(s)
+		}
+	}
+	return t
 }
 
 // Binding documents one action for the template.
@@ -219,14 +226,4 @@ func Template(bindings []Binding) string {
 		fmt.Fprintf(&b, "%-44s # %s\n", line, k.Desc)
 	}
 	return b.String()
-}
-
-// SortedKeys returns m's keys in order, for stable error messages.
-func SortedKeys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }

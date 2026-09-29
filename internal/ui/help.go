@@ -11,25 +11,19 @@ import (
 // Help is the key overlay's state. Its text comes from the keymap, so it
 // shows the keys as the settings file bound them.
 type Help struct {
-	offset  int
+	list           // over the lines; only offset is used
 	pending string // the keys so far of a sequence ("g")
-}
-
-func (h *Help) scroll(d, rows, total int) {
-	h.offset = max(0, min(h.offset+d, total-rows))
 }
 
 // helpRect is where the overlay sits on screen.
 func (a *App) helpRect() (x, y, w, h int) {
-	w = min(max(a.width*3/4, 60), 100, a.width)
-	h = min(max(a.height-4, 12), a.height)
-	return (a.width - w) / 2, (a.height - h) / 2, w, h
+	return a.centered(min(max(a.width*3/4, 60), 100), max(a.height-4, 12))
 }
 
 // helpRows is how many lines of text the overlay shows.
 func (a *App) helpRows() int {
 	_, _, _, h := a.helpRect()
-	return max(h-3, 1)
+	return popupRows(h)
 }
 
 // helpLines is the overlay's text at its current width.
@@ -88,46 +82,22 @@ func (km *Keymap) helpText(width int, th theme) []string {
 func (a *App) helpView() []string {
 	th := a.theme
 	_, _, w, h := a.helpRect()
-	inner := max(w-2, 1)
 	rows := a.helpRows()
 	lines := a.helpLines()
-	a.help.scroll(0, rows, len(lines)) // clamp after a resize
-	b := th.menuBorder.Render
-
-	title := " Keys "
-	out := make([]string, 0, h)
-	out = append(out, b("╭─")+th.menuTitle.Render(title)+b(strings.Repeat("─", max(inner-1-len(title), 0))+"╮"))
-	for r := range rows {
-		line := ""
-		if i := a.help.offset + r; i < len(lines) {
-			line = lines[i]
-		}
-		out = append(out, b("│")+fit(line, inner)+b("│"))
-	}
+	a.help.scroll(0, len(lines), rows) // clamp after a resize
+	shown := make([]string, rows)
+	copy(shown, lines[min(a.help.offset, len(lines)):])
 	pos := strconv.Itoa(min(a.help.offset+rows, len(lines))) + "/" + strconv.Itoa(len(lines))
-	right := th.dim.Render(" " + pos + " ")
-	left := th.dim.Render(" j k scroll · esc close")
-	gap := inner - ansi.StringWidth(left) - ansi.StringWidth(right)
-	out = append(out, b("│")+fit(left+strings.Repeat(" ", max(gap, 0))+right, inner)+b("│"))
-	out = append(out, b("╰"+strings.Repeat("─", inner)+"╯"))
-	return out[:min(len(out), h)]
+	left := th.dim.Render(" " + a.hint(ctxHelp, "down") + " " + a.hint(ctxHelp, "up") + " scroll · " + a.hint(ctxHelp, "close") + " close")
+	return drawBox(th, " Keys ", shown, left, th.dim.Render(" "+pos+" "), w, h)
 }
 
 // helpMouse: the wheel scrolls the overlay and a click outside closes it.
 func (a *App) helpMouse(msg tea.MouseMsg) {
-	m := msg.Mouse()
 	x, y, w, h := a.helpRect()
-	switch msg.(type) {
-	case tea.MouseWheelMsg:
-		switch m.Button {
-		case tea.MouseWheelUp:
-			a.help.scroll(-wheelStep, a.helpRows(), len(a.helpLines()))
-		case tea.MouseWheelDown:
-			a.help.scroll(wheelStep, a.helpRows(), len(a.helpLines()))
-		}
-	case tea.MouseClickMsg:
-		if m.X < x || m.X >= x+w || m.Y < y || m.Y >= y+h {
-			a.help = nil
-		}
+	step, outside := popupMouse(msg, x, y, w, h)
+	a.help.scroll(step, len(a.helpLines()), a.helpRows())
+	if outside {
+		a.help = nil
 	}
 }

@@ -1,6 +1,6 @@
 # joe-md keys
 
-<!-- Generated from the action table in internal/ui/keys.go; don't edit by hand.
+<!-- Generated from the action table in internal/ui/actions.go; don't edit by hand.
      Regenerate with: UPDATE_KEYS_MD=1 go test ./internal/ui -run TestKeysMD -->
 
 Counts work like vim (`5j`, `3]]`, `42G`, `3 ctrl+w >`). Inside joe-md, `f1` or

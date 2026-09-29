@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -15,10 +14,9 @@ const resultsMaxRows = 10
 
 // Results is the search results panel, a list like vim's quickfix window.
 type Results struct {
-	req    search.Request
-	res    search.Result
-	cursor int
-	offset int
+	list
+	req search.Request
+	res search.Result
 }
 
 // Height is the panel height on a screen of the given height, including the
@@ -28,18 +26,9 @@ func (r *Results) Height(screen int) int {
 }
 
 // Select moves the cursor to row i and scrolls it into a panel of rows rows.
-func (r *Results) Select(i, rows int) {
-	r.cursor = max(0, min(i, len(r.res.Matches)-1))
-	if r.cursor < r.offset {
-		r.offset = r.cursor
-	} else if r.cursor >= r.offset+rows {
-		r.offset = r.cursor - rows + 1
-	}
-}
+func (r *Results) Select(i, rows int) { r.selectIdx(i, len(r.res.Matches), rows) }
 
-func (r *Results) Scroll(n, rows int) {
-	r.offset = max(0, min(r.offset+n, len(r.res.Matches)-rows))
-}
+func (r *Results) Scroll(n, rows int) { r.scroll(n, len(r.res.Matches), rows) }
 
 func (r *Results) Current() search.Match { return r.res.Matches[r.cursor] }
 
@@ -56,7 +45,7 @@ func (r *Results) At(y int) int {
 func (r *Results) InFile(path string) []search.Match {
 	var out []search.Match
 	for _, m := range r.res.Matches {
-		if samePath(m.Path, path) {
+		if m.Path == path {
 			out = append(out, m)
 		}
 	}
@@ -133,46 +122,20 @@ func trimMatch(m search.Match) (string, [][2]int) {
 	return text[cut:], spans
 }
 
+// highlightSpans styles the spans of text, which are sorted by start but
+// may overlap.
 func highlightSpans(text string, spans [][2]int, th theme) string {
 	var sb strings.Builder
 	prev := 0
 	for _, s := range spans {
-		if s[0] < prev {
-			continue
+		if s[1] <= prev {
+			continue // inside the span before
 		}
-		sb.WriteString(th.bar.Render(text[prev:s[0]]))
-		sb.WriteString(th.match.Render(text[s[0]:s[1]]))
+		start := max(s[0], prev)
+		sb.WriteString(th.bar.Render(text[prev:start]))
+		sb.WriteString(th.match.Render(text[start:s[1]]))
 		prev = s[1]
 	}
 	sb.WriteString(th.bar.Render(text[prev:]))
 	return sb.String()
-}
-
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return "1 " + one
-	}
-	return strconv.Itoa(n) + " " + many
-}
-
-func tildePath(p string) string {
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		if p == home {
-			return "~"
-		}
-		if strings.HasPrefix(p, home+string(filepath.Separator)) {
-			return "~" + p[len(home):]
-		}
-	}
-	return p
-}
-
-// samePath reports whether a and b name the same file.
-func samePath(a, b string) bool {
-	if a == b {
-		return true
-	}
-	aa, err1 := filepath.Abs(a)
-	bb, err2 := filepath.Abs(b)
-	return err1 == nil && err2 == nil && aa == bb
 }

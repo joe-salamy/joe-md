@@ -1,6 +1,9 @@
 package doc
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -123,5 +126,15 @@ func TestLerpInverse(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestLoadRejectsBinary(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "x.md")
+	if err := os.WriteFile(p, []byte("# hi\x00there"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(p); !errors.Is(err, ErrBinary) {
+		t.Fatalf("err = %v, want ErrBinary", err)
 	}
 }

@@ -26,7 +26,7 @@ type Session struct {
 	cursorFile string
 }
 
-// Command returns the micro command that opens path at 1-based line. The
+// Command returns the micro command that opens absolute path at 1-based line. The
 // command must be run (e.g. with tea.ExecProcess) before calling Result.
 // A non-nil command may come with a non-nil error: micro can still run, but
 // the plugin could not be installed so the cursor line will not come back.
@@ -35,19 +35,15 @@ func Command(path string, line int) (*exec.Cmd, *Session, error) {
 	if err != nil {
 		return nil, nil, errors.New("micro not found on $PATH")
 	}
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return nil, nil, err
-	}
 	f, err := os.CreateTemp("", "joe-md-cursor-*")
 	if err != nil {
 		return nil, nil, err
 	}
 	f.Close()
 
-	cmd := exec.Command(bin, "+"+strconv.Itoa(line), abs)
-	cmd.Env = append(os.Environ(), "JOE_MD_CURSOR_FILE="+f.Name(), "JOE_MD_FILE="+abs)
-	return cmd, &Session{Line: line, cursorFile: f.Name()}, Install()
+	cmd := exec.Command(bin, "+"+strconv.Itoa(line), path)
+	cmd.Env = append(os.Environ(), "JOE_MD_CURSOR_FILE="+f.Name(), "JOE_MD_FILE="+path)
+	return cmd, &Session{Line: line, cursorFile: f.Name()}, install()
 }
 
 // Result returns the 1-based line the cursor was on when micro exited, or
@@ -66,9 +62,9 @@ func (s *Session) Result() int {
 	return n
 }
 
-// Install writes the plugin into micro's config directory, if it is missing
+// install writes the plugin into micro's config directory, if it is missing
 // or out of date.
-func Install() error {
+func install() error {
 	dir, err := configDir()
 	if err != nil {
 		return err

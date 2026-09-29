@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -36,9 +37,11 @@ type searchDoneMsg struct {
 	err     error
 }
 
-func newInput(dark bool) textinput.Model {
+// newInput is a line editor for the search bar or the menu filter.
+func newInput(dark bool, placeholder string) textinput.Model {
 	ti := textinput.New()
 	ti.Prompt = ""
+	ti.Placeholder = placeholder
 	ti.SetStyles(textinput.DefaultStyles(dark))
 	return ti
 }
@@ -59,10 +62,9 @@ func modeName(m search.Mode) string {
 }
 
 func (a *App) setPlaceholder() {
-	a.input.Placeholder = modeName(a.mode) + " · tab: scope · ctrl+r: literal · enter: search"
-	if k := a.keymap.Keys("search", "toggle_literal"); len(k) > 0 {
-		a.input.Placeholder = modeName(a.mode) + " · tab: scope · " + displayKey(k[0]) + ": regex/literal · enter: search"
-	}
+	h := func(name string) string { return a.hint(ctxSearch, name) }
+	a.input.Placeholder = modeName(a.mode) + " · " + h("scope_next") + ": scope · " +
+		h("toggle_literal") + ": regex/literal · " + h("submit") + ": search"
 }
 
 // startSearch opens the search bar for typing, starting in scope s.
@@ -86,7 +88,7 @@ func (a *App) stopTyping() {
 // (ctrl+w, ctrl+u, ctrl+a/e, ctrl+h, ctrl+k, alt+b/f, ...).
 func (a *App) inputKey(msg tea.KeyPressMsg) tea.Cmd {
 	var none string
-	if cmd, ok := a.dispatch(&none, msg.String(), 0, "search"); ok {
+	if cmd, ok := a.dispatch(&none, msg.String(), 0, ctxSearch); ok {
 		return cmd
 	}
 	var cmd tea.Cmd
@@ -122,11 +124,8 @@ func (a *App) submit() tea.Cmd {
 	if q == "" {
 		return nil
 	}
-	for i, h := range a.history {
-		if h == q {
-			a.history = append(a.history[:i], a.history[i+1:]...)
-			break
-		}
+	if i := slices.Index(a.history, q); i >= 0 {
+		a.history = slices.Delete(a.history, i, i+1)
 	}
 	a.history = append(a.history, q)
 	if len(a.history) > maxHistory {
@@ -150,12 +149,17 @@ func (a *App) runSearch(req search.Request, p *Pane) tea.Cmd {
 	a.seq++
 	seq := a.seq
 	a.searching = req.Query
-	d, v := p.doc, p.view
+	return searchCmd(ctx, searchDoneMsg{seq: seq, pane: p, req: req, purpose: searchInteractive})
+}
+
+// searchCmd runs msg.req in the background and returns msg with the result,
+// and the matches in msg.pane's file indexed against its current rendering.
+func searchCmd(ctx context.Context, msg searchDoneMsg) tea.Cmd {
+	d, v := msg.pane.doc, msg.pane.view
 	return func() tea.Msg {
-		res, err := search.Run(ctx, req)
-		msg := searchDoneMsg{seq: seq, pane: p, req: req, purpose: searchInteractive, res: res, err: err}
-		if err == nil {
-			msg.pre = indexed(req, res.Matches, d, v)
+		msg.res, msg.err = search.Run(ctx, msg.req)
+		if msg.err == nil {
+			msg.pre = indexed(msg.req, msg.res.Matches, d, v)
 		}
 		return msg
 	}
@@ -168,7 +172,7 @@ func indexed(req search.Request, ms []search.Match, d *doc.Doc, v *doc.Rendered)
 	if req.Scope != search.File {
 		var in []search.Match
 		for _, m := range ms {
-			if samePath(m.Path, d.Path) {
+			if m.Path == d.Path {
 				in = append(in, m)
 			}
 		}
@@ -188,15 +192,7 @@ func (a *App) refreshSearch(p *Pane) tea.Cmd {
 		return nil
 	}
 	req := search.Request{Query: q, Mode: p.match.mode, Scope: search.File, Root: search.Root(p.doc.Path, search.File)}
-	d, v := p.doc, p.view
-	return func() tea.Msg {
-		res, err := search.Run(context.Background(), req)
-		msg := searchDoneMsg{pane: p, req: req, purpose: searchRefresh, res: res, err: err}
-		if err == nil {
-			msg.pre = indexed(req, res.Matches, d, v)
-		}
-		return msg
-	}
+	return searchCmd(context.Background(), searchDoneMsg{pane: p, req: req, purpose: searchRefresh})
 }
 
 func (a *App) searchDone(m searchDoneMsg) {
@@ -236,7 +232,6 @@ func (a *App) searchDone(m searchDoneMsg) {
 		wrapped, _ := a.pane.JumpMatch(1, true)
 		a.reportJump(1, wrapped)
 		a.syncResults()
-		a.syncTOC()
 
 	default:
 		if len(matches) == 0 {
@@ -250,7 +245,7 @@ func (a *App) searchDone(m searchDoneMsg) {
 		if a.pane == p {
 			p.setMatches(m.pre)
 		} else {
-			a.setPaneMatches(a.pane, m.req, a.results.InFile(a.pane.doc.Path))
+			a.pane.setMatches(newMatches(m.req, a.results.InFile(a.pane.doc.Path)))
 		}
 		a.msg = plural(len(matches), "match", "matches") + " in " + plural(m.res.Files, "file", "files")
 		if m.res.Truncated {
@@ -268,11 +263,6 @@ func (a *App) setResults(req search.Request, res search.Result) {
 		}
 	}
 	a.layout()
-}
-
-// setPaneMatches highlights matches (all in p's file) in pane p.
-func (a *App) setPaneMatches(p *Pane, req search.Request, ms []search.Match) {
-	p.setMatches(newMatches(req, ms))
 }
 
 // nextMatch is n / N.
@@ -300,7 +290,7 @@ func (a *App) syncResults() {
 	}
 	line := p.match.lines[p.match.cur] + 1
 	for i, m := range r.res.Matches {
-		if m.Line == line && samePath(m.Path, p.doc.Path) {
+		if m.Line == line && m.Path == p.doc.Path {
 			r.Select(i, a.resultRows())
 			return
 		}
@@ -341,10 +331,9 @@ func (a *App) openResult(mode openMode) {
 	if !a.openAt(m.Path, mode) {
 		return
 	}
-	a.setPaneMatches(a.pane, a.results.req, a.results.InFile(m.Path))
+	a.pane.setMatches(newMatches(a.results.req, a.results.InFile(m.Path)))
 	a.pane.GotoMatchLine(m.Line - 1)
 	a.focus = focusDoc
-	a.syncTOC()
 	a.msg = relPath(a.results.req, m.Path) + ":" + strconv.Itoa(m.Line) +
 		"  (" + strconv.Itoa(a.results.cursor+1) + "/" + strconv.Itoa(len(a.results.res.Matches)) + ")"
 }
@@ -429,21 +418,20 @@ func (a *App) barView() string {
 	}
 	if q := a.paneQuery(); q != "" {
 		cur, total := a.pane.MatchPos()
-		var right string
-		switch {
-		case total == 0:
-			right = th.barDim.Render("no matches ")
-		case cur > 0:
-			right = th.bar.Render(strconv.Itoa(cur)+"/"+strconv.Itoa(total)) + th.barDim.Render("  "+a.hint("normal", "next_match")+"/"+a.hint("normal", "prev_match")+" · "+a.hint("normal", "toggle_results")+" list ")
-		default:
-			right = th.bar.Render(plural(total, "match", "matches")) + th.barDim.Render("  "+a.hint("normal", "next_match")+"/"+a.hint("normal", "prev_match")+" · "+a.hint("normal", "toggle_results")+" list ")
+		right := th.barDim.Render("no matches ")
+		if total > 0 {
+			count := plural(total, "match", "matches")
+			if cur > 0 {
+				count = strconv.Itoa(cur) + "/" + strconv.Itoa(total)
+			}
+			right = th.bar.Render(count) + th.barDim.Render("  "+a.hint(ctxNormal, "next_match")+"/"+a.hint(ctxNormal, "prev_match")+" · "+a.hint(ctxNormal, "toggle_results")+" list ")
 		}
 		left := th.barPrompt.Render(" / ") + th.bar.Render(q)
 		gap := w - ansi.StringWidth(left) - ansi.StringWidth(right)
 		return fit(left+strings.Repeat(" ", max(gap, 1))+right, w)
 	}
-	return fit(th.barDim.Render(" "+a.hint("normal", "search_file")+" search file   "+a.hint("normal", "search_files")+" search "+
-		a.crossScope.String()+"   "+a.hint("normal", "toggle_search_bar")+" hide bar   "+a.hint("normal", "help")+" keys"), w)
+	return fit(th.barDim.Render(" "+a.hint(ctxNormal, "search_file")+" search file   "+a.hint(ctxNormal, "search_files")+" search "+
+		a.crossScope.String()+"   "+a.hint(ctxNormal, "toggle_search_bar")+" hide bar   "+a.hint(ctxNormal, "help")+" keys"), w)
 }
 
 // paneQuery is the current pane's search, or "" when no file is open.

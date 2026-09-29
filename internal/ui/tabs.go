@@ -1,8 +1,8 @@
 package ui
 
 import (
-	"bytes"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -72,8 +72,12 @@ func (a *App) switchTo(i int, path string) {
 // openAt makes path the document on screen. Opening in a tab or the focused
 // pane switches to a pane already showing the file, if any; splits always
 // open it again, to show two places in one file. Everything that opens
-// files goes through here.
+// files goes through here. Open files are known by absolute path (see
+// doc.Load), so paths compare with ==.
 func (a *App) openAt(path string, mode openMode) bool {
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
 	if mode >= openVSplit && a.pane == nil {
 		mode = openNewTab
 	}
@@ -92,26 +96,19 @@ func (a *App) openAt(path string, mode openMode) bool {
 		a.msg = "open: " + err.Error()
 		return false
 	}
-	if isBinary(d.Source) {
-		a.msg = "open: " + d.Name + " is not a text file"
-		return false
-	}
 	p := NewPane(d)
 	switch {
 	case mode == openReplace && a.pane != nil:
 		t := a.tab()
 		n := leaf(p)
-		t.focus.replace(n)
-		if t.focus == t.root {
-			t.root = n
-		}
+		t.replace(t.focus, n)
 		a.focusLeaf(n)
 	case mode >= openVSplit:
 		a.tab().split(p, mode == openVSplit)
 		a.focusLeaf(a.tab().focus)
 	default:
 		i := min(a.cur+1, len(a.tabs))
-		a.tabs = append(a.tabs[:i], append([]*Tab{newTab(p)}, a.tabs[i:]...)...)
+		a.tabs = slices.Insert(a.tabs, i, newTab(p))
 		a.activate(i)
 	}
 	return true
@@ -165,11 +162,6 @@ func (a *App) livePane(p *Pane) bool {
 	return false
 }
 
-// isBinary guesses like git does: a NUL byte near the start.
-func isBinary(b []byte) bool {
-	return bytes.IndexByte(b[:min(len(b), 8000)], 0) >= 0
-}
-
 // closeTab closes the current tab and reports whether any are left. Like
 // vim, the tab to the right takes its place.
 func (a *App) closeTab() bool {
@@ -177,13 +169,12 @@ func (a *App) closeTab() bool {
 		return false
 	}
 	a.pushClosed(&closed{kind: closedTab, tab: a.tabs[a.cur], idx: a.cur})
-	a.tabs = append(a.tabs[:a.cur], a.tabs[a.cur+1:]...)
+	a.tabs = slices.Delete(a.tabs, a.cur, a.cur+1)
 	if len(a.tabs) == 0 {
 		a.activate(0)
 		return false
 	}
 	a.activate(min(a.cur, len(a.tabs)-1))
-	a.syncTOC()
 	return true
 }
 
@@ -194,7 +185,6 @@ func (a *App) gotoTab(n int) {
 		return
 	}
 	a.activate(n - 1)
-	a.syncTOC()
 }
 
 // stepTab is gt / gT: n tabs to the right (left if n < 0), wrapping.
@@ -204,7 +194,6 @@ func (a *App) stepTab(n int) {
 	}
 	k := len(a.tabs)
 	a.activate(((a.cur+n)%k + k) % k)
-	a.syncTOC()
 }
 
 // moveTab is << / >>: the current tab n places to the right (left if
@@ -219,8 +208,7 @@ func (a *App) moveTab(n int) {
 		return
 	}
 	t := a.tabs[a.cur]
-	a.tabs = append(a.tabs[:a.cur], a.tabs[a.cur+1:]...)
-	a.tabs = append(a.tabs[:to], append([]*Tab{t}, a.tabs[to:]...)...)
+	a.tabs = slices.Insert(slices.Delete(a.tabs, a.cur, a.cur+1), to, t)
 	a.cur = to
 }
 

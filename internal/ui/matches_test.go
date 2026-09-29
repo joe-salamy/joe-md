@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -136,11 +137,18 @@ func testPane(t *testing.T, src string) *Pane {
 	return p
 }
 
+// setTestMatches highlights matches in p as a search would: lines are 0-based
+// source lines, terms the matched strings.
+func setTestMatches(p *Pane, query string, lines []int, terms []string) {
+	lines = slices.Compact(slices.Sorted(slices.Values(lines)))
+	p.setMatches(&matches{query: query, lines: lines, terms: terms, cur: -1})
+}
+
 func TestMatchesHighlightAndJump(t *testing.T) {
 	src := "# Title\n\nalpha **needle** beta\n\ngamma\n\n<span title=\"needle\">x</span> y\n\nlast needle\n"
 	p := testPane(t, src)
 	// rg would report lines 3, 7 and 9 (1-based).
-	p.SetMatches("needle", []int{2, 6, 8}, []string{"needle"})
+	setTestMatches(p, "needle", []int{2, 6, 8}, []string{"needle"})
 
 	m := p.match
 	if len(m.target) != 3 {
@@ -192,7 +200,7 @@ func TestMatchJumpsScrollOnlyWhenNeeded(t *testing.T) {
 		}
 	}
 	p := testPane(t, sb.String())
-	p.SetMatches("needle", []int{0, 2, 40, 58}, []string{"needle"})
+	setTestMatches(p, "needle", []int{0, 2, 40, 58}, []string{"needle"})
 	m := p.match
 	if len(m.target) != 4 {
 		t.Fatalf("targets %v", m.target)
@@ -285,5 +293,15 @@ func TestMatchesPhraseAcrossWrap(t *testing.T) {
 		if !strings.Contains(cut, th.matchCur.Render(ansi.Strip(cut))) {
 			t.Fatalf("line %d not in the current colour: %q", r, cut)
 		}
+	}
+}
+
+// Overlapping spans are highlighted as one run, not dropped.
+func TestHighlightSpansOverlap(t *testing.T) {
+	th := newTheme(true, "dark", config.Theme{})
+	got := highlightSpans("abcdefgh", [][2]int{{1, 4}, {2, 6}}, th)
+	want := th.bar.Render("a") + th.match.Render("bcd") + th.bar.Render("") + th.match.Render("ef") + th.bar.Render("gh")
+	if got != want {
+		t.Fatalf("got %q\nwant %q", got, want)
 	}
 }

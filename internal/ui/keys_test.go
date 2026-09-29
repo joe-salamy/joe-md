@@ -38,7 +38,7 @@ func TestActionTable(t *testing.T) {
 		known[g] = true
 	}
 	for _, x := range actions {
-		id := x.ctx + "." + x.name
+		id := string(x.ctx) + "." + x.name
 		if seen[id] {
 			t.Errorf("%s defined twice", id)
 		}
@@ -53,7 +53,7 @@ func TestActionTable(t *testing.T) {
 	for _, x := range actions {
 		for _, k := range x.keys {
 			if km.bind[x.ctx][k] != x {
-				t.Errorf("%s: %q is also bound to %s", x.ctx+"."+x.name, k, km.bind[x.ctx][k].name)
+				t.Errorf("%s: %q is also bound to %s", string(x.ctx)+"."+x.name, k, km.bind[x.ctx][k].name)
 			}
 		}
 	}
@@ -89,7 +89,7 @@ func TestDumpConfigParses(t *testing.T) {
 func TestConfigParse(t *testing.T) {
 	c := config.Default()
 	err := config.Parse([]byte("width = 90\n[startup]\ntoc = false\n[search]\nscope = \"dir\"\nliteral = true\n[theme]\naccent = \"#ff8800\"\n"), &c)
-	if err != nil || c.Width != 90 || c.Startup.TOC || !c.Startup.Tabs || c.Search.Scope != "dir" || !c.Search.Literal || c.Theme.Accent != "#ff8800" {
+	if err != nil || c.Width != 90 || c.Startup.TOC || !c.Startup.Tabs || c.Search.Scope != search.Dir || !c.Search.Literal || c.Theme.Accent != "#ff8800" {
 		t.Fatalf("parse: %+v %v", c, err)
 	}
 	for _, bad := range []string{

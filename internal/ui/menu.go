@@ -7,7 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -28,11 +28,10 @@ import (
 // Menu is the open pop-up's state. showAll lives on App so it survives
 // closing the menu.
 type Menu struct {
+	list      // over shown
 	dir       string
 	entries   []entry
 	shown     []int // indexes into entries that pass the hidden and filter rules
-	cursor    int   // index into shown
-	offset    int
 	filter    textinput.Model
 	filtering bool   // the filter input has the keyboard
 	pending   string // the keys so far of a sequence ("g")
@@ -56,11 +55,7 @@ func isMarkdown(name string) bool { return markdownExts[strings.ToLower(filepath
 
 // openMenu pops the menu up at dir with the cursor on the entry named sel.
 func (a *App) openMenu(dir, sel string) tea.Cmd {
-	ti := textinput.New()
-	ti.Prompt = ""
-	ti.Placeholder = "filter names"
-	ti.SetStyles(textinput.DefaultStyles(a.opts.Dark))
-	a.menu = &Menu{filter: ti}
+	a.menu = &Menu{filter: newInput(a.opts.Dark, "filter names")}
 	if !a.menuLoad(dir, sel) {
 		a.menu.dir = dir // show the error in an empty listing
 	}
@@ -69,17 +64,14 @@ func (a *App) openMenu(dir, sel string) tea.Cmd {
 
 // menuHere is o: the menu at the current file's directory, on that file.
 func (a *App) menuHere() tea.Cmd {
-	dir, sel := ".", ""
 	if a.pane != nil {
-		abs, err := filepath.Abs(a.pane.doc.Path)
-		if err == nil {
-			dir, sel = filepath.Dir(abs), filepath.Base(abs)
-		}
+		return a.openMenu(filepath.Dir(a.pane.doc.Path), a.pane.doc.Name)
 	}
-	if abs, err := filepath.Abs(dir); err == nil {
-		dir = abs
+	dir, err := filepath.Abs(".")
+	if err != nil {
+		dir = "."
 	}
-	return a.openMenu(dir, sel)
+	return a.openMenu(dir, "")
 }
 
 // closeMenu hides the menu. With no tabs open there is nothing to go back to,
@@ -136,11 +128,11 @@ func listDir(dir string) ([]entry, error) {
 			es[i].hidden = true
 		}
 	}
-	sort.Slice(es, func(i, j int) bool {
-		if es[i].dir != es[j].dir {
-			return es[i].dir
+	slices.SortFunc(es, func(a, b entry) int {
+		if a.dir != b.dir {
+			return natural.DirsFirst(a.dir)
 		}
-		return natural.Less(es[i].name, es[j].name)
+		return natural.Compare(a.name, b.name)
 	})
 	if filepath.Dir(dir) != dir {
 		es = append([]entry{{name: "..", dir: true, parent: true}}, es...)
@@ -231,18 +223,9 @@ func (m *Menu) selectName(name string, rows int) {
 	m.selectIdx(0, rows)
 }
 
-func (m *Menu) selectIdx(i, rows int) {
-	m.cursor = max(0, min(i, len(m.shown)-1))
-	if m.cursor < m.offset {
-		m.offset = m.cursor
-	} else if m.cursor >= m.offset+rows {
-		m.offset = m.cursor - rows + 1
-	}
-}
+func (m *Menu) selectIdx(i, rows int) { m.list.selectIdx(i, len(m.shown), rows) }
 
-func (m *Menu) scroll(n, rows int) {
-	m.offset = max(0, min(m.offset+n, len(m.shown)-rows))
-}
+func (m *Menu) scroll(n, rows int) { m.list.scroll(n, len(m.shown), rows) }
 
 // menuActivate is l / enter: go into a directory or open a file.
 func (a *App) menuActivate(mode openMode) tea.Cmd {
@@ -259,7 +242,6 @@ func (a *App) menuActivate(mode openMode) tea.Cmd {
 		if a.openAt(filepath.Join(m.dir, e.name), mode) {
 			a.menu = nil
 			a.focus = focusDoc
-			a.syncTOC()
 		} else {
 			m.err, a.msg = a.msg, ""
 		}
@@ -279,7 +261,7 @@ func (a *App) menuKey(msg tea.KeyPressMsg) tea.Cmd {
 	m, k := a.menu, msg.String()
 	if m.filtering {
 		var none string
-		if cmd, ok := a.dispatch(&none, k, 0, "filter"); ok {
+		if cmd, ok := a.dispatch(&none, k, 0, ctxFilter); ok {
 			return cmd
 		}
 		var cmd tea.Cmd
@@ -290,7 +272,7 @@ func (a *App) menuKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return cmd
 	}
-	cmd, _ := a.dispatch(&m.pending, k, 0, "menu")
+	cmd, _ := a.dispatch(&m.pending, k, 0, ctxMenu)
 	return cmd
 }
 
@@ -312,16 +294,13 @@ func (a *App) menuHome() {
 
 // menuRect is where the pop-up sits on screen.
 func (a *App) menuRect() (x, y, w, h int) {
-	w = min(max(a.width*3/5, 48), 96, a.width)
-	h = min(max(a.height*2/3, 12), a.height)
-	return (a.width - w) / 2, (a.height - h) / 2, w, h
+	return a.centered(min(max(a.width*3/5, 48), 96), max(a.height*2/3, 12))
 }
 
-// menuRows is how many entries the pop-up shows: all but the borders and the
-// footer.
+// menuRows is how many entries the pop-up shows.
 func (a *App) menuRows() int {
 	_, _, _, h := a.menuRect()
-	return max(h-3, 1)
+	return popupRows(h)
 }
 
 // menuView draws the pop-up: a titled box of entries with a footer showing
@@ -331,22 +310,16 @@ func (a *App) menuView() []string {
 	_, _, w, h := a.menuRect()
 	inner := max(w-2, 1)
 	rows := a.menuRows()
-	b := th.menuBorder.Render
 
 	title := tildePath(m.dir)
 	if over := ansi.StringWidth(title) - (inner - 4); over > 0 {
 		title = ansi.TruncateLeft(title, over+1, "…")
 	}
-	title = " " + title + " "
-	out := make([]string, 0, h)
-	out = append(out, b("╭─")+th.menuTitle.Render(title)+
-		b(strings.Repeat("─", max(inner-1-ansi.StringWidth(title), 0))+"╮"))
+	lines := make([]string, 0, rows)
 
 	open := map[string]bool{}
 	for _, p := range a.allPanes() {
-		if abs, err := filepath.Abs(p.doc.Path); err == nil {
-			open[abs] = true
-		}
+		open[p.doc.Path] = true
 	}
 	// With nothing but ../ listed, the row after it explains why.
 	empty := len(m.shown) == 0 || len(m.shown) == 1 && m.entries[m.shown[0]].parent
@@ -363,7 +336,7 @@ func (a *App) menuView() []string {
 		case i == len(m.shown) && empty:
 			line = th.dim.Render(" (nothing here · . shows hidden and non-markdown files)")
 		}
-		out = append(out, b("│")+fit(line, inner)+b("│"))
+		lines = append(lines, line)
 	}
 
 	count := strconv.Itoa(len(m.shown))
@@ -382,15 +355,11 @@ func (a *App) menuView() []string {
 		if a.menuAll {
 			all = "md only"
 		}
-		h := func(name string) string { return a.hint("menu", name) }
+		h := func(name string) string { return a.hint(ctxMenu, name) }
 		left = th.dim.Render(" " + h("filter") + " filter · " + h("toggle_all") + " " + all + " · " + h("parent") + " up · " +
 			h("open_here") + " here · " + h("open_vsplit") + "/" + h("open_hsplit") + " split · " + h("close") + " close")
 	}
-	left = ansi.Truncate(left, max(inner-ansi.StringWidth(right), 0), "")
-	gap := inner - ansi.StringWidth(left) - ansi.StringWidth(right)
-	out = append(out, b("│")+fit(left+"\x1b[0m"+strings.Repeat(" ", max(gap, 0))+right, inner)+b("│"))
-	out = append(out, b("╰"+strings.Repeat("─", inner)+"╯"))
-	return out[:min(len(out), h)]
+	return drawBox(th, " "+title+" ", lines, left, right, w, h)
 }
 
 func (a *App) menuEntry(e entry, cursor, open bool, width int) string {
@@ -421,46 +390,20 @@ func (a *App) menuEntry(e entry, cursor, open bool, width int) string {
 // menuMouse handles the mouse while the menu is open: the wheel scrolls it,
 // a click on an entry opens it and a click outside closes the menu.
 func (a *App) menuMouse(msg tea.MouseMsg) tea.Cmd {
-	m := msg.Mouse()
 	x, y, w, h := a.menuRect()
-	inside := m.X >= x && m.X < x+w && m.Y >= y && m.Y < y+h
+	step, outside := popupMouse(msg, x, y, w, h)
+	a.menu.scroll(step, a.menuRows())
+	if outside {
+		return a.closeMenu()
+	}
+	m := msg.Mouse()
+	if _, click := msg.(tea.MouseClickMsg); !click || m.Button != tea.MouseLeft {
+		return nil
+	}
 	row := m.Y - y - 1
-	switch msg.(type) {
-	case tea.MouseWheelMsg:
-		switch m.Button {
-		case tea.MouseWheelUp:
-			a.menu.scroll(-wheelStep, a.menuRows())
-		case tea.MouseWheelDown:
-			a.menu.scroll(wheelStep, a.menuRows())
-		}
-	case tea.MouseClickMsg:
-		if m.Button != tea.MouseLeft {
-			return nil
-		}
-		if !inside {
-			return a.closeMenu()
-		}
-		if i := a.menu.offset + row; row >= 0 && row < a.menuRows() && i < len(a.menu.shown) {
-			a.menu.selectIdx(i, a.menuRows())
-			return a.menuActivate(openNewTab)
-		}
+	if i := a.menu.offset + row; row >= 0 && row < a.menuRows() && i < len(a.menu.shown) {
+		a.menu.selectIdx(i, a.menuRows())
+		return a.menuActivate(openNewTab)
 	}
 	return nil
-}
-
-// overlay draws box over the screen lines at column x, row y. The screen
-// line's own style resumes after the box because TruncateLeft keeps the
-// escape codes before the cut.
-func overlay(screen, box []string, x, y, width int) {
-	for i, l := range box {
-		r := y + i
-		if r < 0 || r >= len(screen) {
-			continue
-		}
-		s := screen[r]
-		left := ansi.Truncate(s, x, "")
-		left += "\x1b[0m" + strings.Repeat(" ", max(x-ansi.StringWidth(left), 0))
-		right := ansi.TruncateLeft(s, x+ansi.StringWidth(l), "")
-		screen[r] = fit(left+l+"\x1b[0m"+right, width)
-	}
 }

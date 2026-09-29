@@ -7,16 +7,22 @@ package search
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 
 	"github.com/joe-salamy/joe-md/internal/natural"
@@ -41,21 +47,18 @@ func (s Scope) Next(step int) Scope {
 	return ((s+Scope(step))%n + n) % n
 }
 
-// Root returns the absolute path ripgrep searches for scope s around file.
+// Root returns the path ripgrep searches for scope s around file, which
+// must be absolute (as doc paths are), so ripgrep reports absolute paths.
 func Root(file string, s Scope) string {
-	abs, err := filepath.Abs(file)
-	if err != nil {
-		abs = file
-	}
 	switch s {
 	case File:
-		return abs
+		return file
 	case Repo:
-		if r := RepoRoot(filepath.Dir(abs)); r != "" {
+		if r := RepoRoot(filepath.Dir(file)); r != "" {
 			return r
 		}
 	}
-	return filepath.Dir(abs)
+	return filepath.Dir(file)
 }
 
 // RepoRoot is the nearest directory at or above dir containing .git (a
@@ -86,24 +89,23 @@ var caseNames = [...]string{"ignore", "smart", "sensitive"}
 
 func (c Case) String() string { return caseNames[c] }
 
-// ParseCase is the inverse of Case.String.
-func ParseCase(s string) (Case, bool) {
-	for i, n := range caseNames {
-		if n == s {
-			return Case(i), true
-		}
-	}
-	return 0, false
-}
+// Scope and Case are written by name in the settings file.
 
-// ParseScope is the inverse of Scope.String.
-func ParseScope(s string) (Scope, bool) {
-	for i, n := range scopeNames {
-		if n == s {
-			return Scope(i), true
-		}
+func (s Scope) MarshalText() ([]byte, error) { return []byte(s.String()), nil }
+func (c Case) MarshalText() ([]byte, error)  { return []byte(c.String()), nil }
+
+func (s *Scope) UnmarshalText(b []byte) error { return unmarshalName(s, "scope", scopeNames[:], b) }
+func (c *Case) UnmarshalText(b []byte) error  { return unmarshalName(c, "case", caseNames[:], b) }
+
+// unmarshalName sets *v to the index of name b in names, the inverse of the
+// String methods; what names the setting in the error.
+func unmarshalName[T ~int](v *T, what string, names []string, b []byte) error {
+	i := slices.Index(names, string(b))
+	if i < 0 {
+		return fmt.Errorf("%s %q: must be %s or %s", what, b, strings.Join(names[:len(names)-1], ", "), names[len(names)-1])
 	}
-	return 0, false
+	*v = T(i)
+	return nil
 }
 
 // Mode is how a query is matched.
@@ -140,7 +142,7 @@ type Match struct {
 func (m Match) Terms() []string {
 	var out []string
 	for _, s := range m.Spans {
-		if t := m.Text[s[0]:s[1]]; t != "" && !contains(out, t) {
+		if t := m.Text[s[0]:s[1]]; t != "" && !slices.Contains(out, t) {
 			out = append(out, t)
 		}
 	}
@@ -148,7 +150,7 @@ func (m Match) Terms() []string {
 }
 
 type Result struct {
-	Matches   []Match // sorted by path (natural.PathLess), then line
+	Matches   []Match // sorted by path (natural.PathCompare), then line
 	Files     int     // number of distinct files in Matches
 	Truncated bool    // Limit was hit
 }
@@ -232,6 +234,10 @@ func hasUpper(term string, literal bool) bool {
 // single file is searched whatever its extension. The terms (see Terms) are
 // ANDed: a line matches only if every term matches it, and then carries the
 // spans of every term, so the results list and the pane highlight them all.
+//
+// The rarest term searches the scope, and the lines it finds go in batches
+// through the other terms (see narrow), so the search reads the files once
+// and stops as soon as more than the limit of lines match every term.
 func Run(parent context.Context, req Request) (Result, error) {
 	rg, err := exec.LookPath("rg")
 	if err != nil {
@@ -245,104 +251,157 @@ func Run(parent context.Context, req Request) (Result, error) {
 	default:
 		limit = DefaultLimit
 	}
-	terms := req.Terms()
+	var terms []string
+	for _, t := range req.Terms() {
+		if !slices.Contains(terms, t) {
+			terms = append(terms, t)
+		}
+	}
 	if len(terms) == 0 {
 		return Result{}, nil
 	}
-	seen := map[string]bool{}
-	uniq := make([]string, 0, len(terms))
-	for _, t := range terms {
-		if !seen[t] {
-			seen[t] = true
-			uniq = append(uniq, t)
-		}
+	if len(terms) > 1 {
+		terms = byRarity(parent, rg, req, terms)
 	}
-	if len(uniq) == 1 {
-		ms, truncated, err := runOne(parent, rg, req, uniq[0], limit)
-		if err != nil {
-			return Result{}, err
-		}
-		return finish(ms, truncated), nil
-	}
-	// One ripgrep run per term, intersected on file and line: the terms must
-	// share a line, not just a file.
-	type key struct {
-		path string
-		line int
-	}
-	byLine := map[key]*Match{}
-	var truncated bool
-	for i, t := range uniq {
-		if err := parent.Err(); err != nil {
-			return Result{}, err // superseded by a newer search
-		}
-		ms, trunc, err := runOne(parent, rg, req, t, limit)
-		if err != nil {
-			return Result{}, err
-		}
-		truncated = truncated || trunc
-		if i == 0 {
-			for j := range ms {
-				m := ms[j]
-				byLine[key{m.Path, m.Line}] = &m
-			}
-		} else {
-			keep := map[key]bool{}
-			for j := range ms {
-				k := key{ms[j].Path, ms[j].Line}
-				base, ok := byLine[k]
-				if !ok || keep[k] {
-					continue
-				}
-				// The file may have changed between runs; clamp so Terms
-				// can't slice past the base text.
-				for _, s := range ms[j].Spans {
-					if end := min(s[1], len(base.Text)); s[0] < end {
-						base.Spans = append(base.Spans, [2]int{s[0], end})
-					}
-				}
-				keep[k] = true
-			}
-			for k := range byLine {
-				if !keep[k] {
-					delete(byLine, k)
-				}
-			}
-		}
-		if len(byLine) == 0 {
-			break
-		}
-	}
-	out := make([]Match, 0, len(byLine))
-	for _, m := range byLine {
-		out = append(out, *m)
-	}
-	return finish(out, truncated), nil
-}
-
-// runOne runs one term through ripgrep, returning its matching lines.
-func runOne(parent context.Context, rg string, req Request, term string, limit int) ([]Match, bool, error) {
-	args := []string{"--json", [...]string{"-i", "-S", "-s"}[req.Case]}
-	if req.Scope != File {
-		args = append(args, "-t", "markdown")
-	}
-	args = append(args, "--", req.expr(term), req.Root)
 
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, rg, args...)
+	var out, batch []Match
+	flush := func() error {
+		ms := batch
+		batch = nil
+		var err error
+		for _, t := range terms[1:] {
+			if len(ms) == 0 {
+				break
+			}
+			if ms, err = narrow(ctx, rg, req, t, ms); err != nil {
+				return err
+			}
+		}
+		out = append(out, ms...)
+		return nil
+	}
+	var flushErr error
+	err = stream(ctx, rg, req, terms[0], nil, func(m Match) bool {
+		batch = append(batch, m)
+		if len(batch) == narrowBatch || len(terms) == 1 {
+			flushErr = flush()
+		}
+		return flushErr == nil && len(out) <= limit
+	})
+	if err == nil && flushErr == nil && len(out) <= limit {
+		flushErr = flush()
+	}
+	if err := parent.Err(); err != nil {
+		return Result{}, err // superseded by a newer search
+	}
+	if err != nil {
+		return Result{}, err
+	}
+	if flushErr != nil {
+		return Result{}, flushErr
+	}
+	return finish(out, limit), nil
+}
+
+// narrowBatch is how many lines of the first term go through the others at
+// once: enough that few ripgrep runs are needed, few enough that a search
+// of common terms stops soon after it has enough.
+const narrowBatch = 8192
+
+// byRarity orders terms by how many lines each matches, fewest first,
+// counting them all at once. A term that fails to count goes last; the
+// search proper reports its error.
+func byRarity(ctx context.Context, rg string, req Request, terms []string) []string {
+	counts := make([]int, len(terms))
+	var wg sync.WaitGroup
+	for i, t := range terms {
+		wg.Go(func() { counts[i] = count(ctx, rg, req, t) })
+	}
+	wg.Wait()
+	idx := make([]int, len(terms))
+	for i := range idx {
+		idx[i] = i
+	}
+	slices.SortStableFunc(idx, func(a, b int) int { return cmp.Compare(counts[a], counts[b]) })
+	out := make([]string, len(terms))
+	for i, j := range idx {
+		out[i] = terms[j]
+	}
+	return out
+}
+
+// count is how many lines term matches in the scope, or MaxInt on an error.
+func count(ctx context.Context, rg string, req Request, term string) int {
+	out, err := exec.CommandContext(ctx, rg, append(args(req, term, false), "--count", "--no-filename", "--", req.expr(term), req.Root)...).Output()
+	var exit *exec.ExitError
+	if err != nil && !(errors.As(err, &exit) && exit.ExitCode() == 1) {
+		return math.MaxInt
+	}
+	n := 0
+	for _, f := range strings.Fields(string(out)) {
+		c, _ := strconv.Atoi(f)
+		n += c
+	}
+	return n
+}
+
+// narrow keeps the lines of ms that term matches too, adding its spans. The
+// lines' text goes to ripgrep on stdin, so term matches exactly as it would
+// in the files, which aren't read again.
+func narrow(ctx context.Context, rg string, req Request, term string, ms []Match) ([]Match, error) {
+	var in bytes.Buffer
+	for _, m := range ms {
+		in.WriteString(m.Text)
+		in.WriteByte('\n')
+	}
+	var out []Match
+	err := stream(ctx, rg, req, term, &in, func(h Match) bool {
+		if h.Line >= 1 && h.Line <= len(ms) {
+			m := ms[h.Line-1] // stdin's line n is the n-th candidate
+			m.Spans = append(slices.Clip(m.Spans), h.Spans...)
+			out = append(out, m)
+		}
+		return true
+	})
+	return out, err
+}
+
+// args are ripgrep's options for searching term: the root, or stdin.
+func args(req Request, term string, stdin bool) []string {
+	out := []string{[...]string{"-i", "-S", "-s"}[req.Case]}
+	switch {
+	case stdin:
+		out = append(out, "--text")
+	case req.Scope != File:
+		out = append(out, "-t", "markdown")
+	}
+	return out
+}
+
+// stream runs term through ripgrep over req.Root, or over stdin if it is
+// set, handing each matching line to f until f returns false.
+func stream(ctx context.Context, rg string, req Request, term string, stdin io.Reader, f func(Match) bool) error {
+	path := req.Root
+	if stdin != nil {
+		path = "-"
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, rg, append(append(args(req, term, stdin != nil), "--json"), "--", req.expr(term), path)...)
+	cmd.Stdin = stdin
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, false, err
+		return err
 	}
 	if err := cmd.Start(); err != nil {
-		return nil, false, err
+		return err
 	}
 
-	var ms []Match
-	var truncated bool
+	found, stopped := false, false
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 0, 64*1024), 64*1024*1024)
 	for sc.Scan() {
@@ -350,49 +409,44 @@ func runOne(parent context.Context, rg string, req Request, term string, limit i
 		if !ok {
 			continue
 		}
-		if len(ms) == limit {
-			truncated = true
+		found = true
+		if !f(m) {
+			stopped = true
 			cancel() // kill rg; we have enough
 			break
 		}
-		ms = append(ms, m)
 	}
 	waitErr := cmd.Wait()
 
-	if err := parent.Err(); err != nil {
-		return nil, false, err // superseded by a newer search
-	}
 	// Exit 1 means no matches. Exit 2 means an error, but ripgrep keeps going
 	// past unreadable files, so only report it when nothing was found.
 	var exit *exec.ExitError
-	if waitErr != nil && !truncated && len(ms) == 0 {
+	if waitErr != nil && !stopped && !found && ctx.Err() == nil {
 		if !errors.As(waitErr, &exit) || exit.ExitCode() != 1 {
 			if msg := firstLines(stderr.String()); msg != "" {
-				return nil, false, errors.New(msg)
+				return errors.New(msg)
 			}
-			return nil, false, waitErr
+			return waitErr
 		}
 	}
-	return ms, truncated, nil
+	return nil
 }
 
-// finish sorts matches by path, in menu order, then line, and counts the files.
-func finish(ms []Match, truncated bool) Result {
+// finish sorts matches by path, in menu order, then line, keeps the first
+// limit, and counts the files.
+func finish(ms []Match, limit int) Result {
 	for i := range ms {
-		s := ms[i].Spans
-		sort.Slice(s, func(a, b int) bool {
-			if s[a][0] != s[b][0] {
-				return s[a][0] < s[b][0]
-			}
-			return s[a][1] < s[b][1]
+		slices.SortFunc(ms[i].Spans, func(a, b [2]int) int {
+			return cmp.Or(cmp.Compare(a[0], b[0]), cmp.Compare(a[1], b[1]))
 		})
 	}
-	sort.SliceStable(ms, func(i, j int) bool {
-		if ms[i].Path != ms[j].Path {
-			return natural.PathLess(ms[i].Path, ms[j].Path)
-		}
-		return ms[i].Line < ms[j].Line
+	slices.SortStableFunc(ms, func(a, b Match) int {
+		return cmp.Or(natural.PathCompare(a.Path, b.Path), cmp.Compare(a.Line, b.Line))
 	})
+	truncated := len(ms) > limit
+	if truncated {
+		ms = ms[:limit]
+	}
 	res := Result{Matches: ms, Truncated: truncated}
 	for i, m := range ms {
 		if i == 0 || m.Path != ms[i-1].Path {
@@ -465,13 +519,4 @@ func firstLines(s string) string {
 		}
 	}
 	return strings.Join(parts, " ")
-}
-
-func contains(ss []string, s string) bool {
-	for _, x := range ss {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }

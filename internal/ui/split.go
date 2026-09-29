@@ -150,11 +150,14 @@ func (n *Node) equalize() {
 	}
 }
 
-// replace puts m where n is in the tree.
-func (n *Node) replace(m *Node) {
+// replace puts m where n is in the tab's tree.
+func (t *Tab) replace(n, m *Node) {
 	m.parent, m.frac = n.parent, n.frac
 	if n.parent != nil {
 		n.parent.kids[n.index()] = m
+	}
+	if n == t.root {
+		t.root = m
 	}
 }
 
@@ -192,11 +195,11 @@ func (t *Tab) multi() bool { return t.root.pane == nil }
 
 // leafOf returns the leaf showing path, preferring the focused one, or nil.
 func (t *Tab) leafOf(path string) *Node {
-	if samePath(t.focus.pane.doc.Path, path) {
+	if t.focus.pane.doc.Path == path {
 		return t.focus
 	}
 	for _, l := range t.leaves() {
-		if samePath(l.pane.doc.Path, path) {
+		if l.pane.doc.Path == path {
 			return l
 		}
 	}
@@ -223,10 +226,7 @@ func (t *Tab) insert(n, m *Node, vert, before bool, share float64) {
 		m.frac -= n.frac
 	} else {
 		in = &Node{vert: vert}
-		m.replace(in)
-		if m == t.root {
-			t.root = in
-		}
+		t.replace(m, in)
 		in.kids = []*Node{m}
 		m.parent, m.frac = in, 1-share
 		n.frac = share
@@ -268,16 +268,13 @@ func (t *Tab) close() {
 	f := t.focus
 	par := f.parent
 	i := f.index()
-	par.kids = append(par.kids[:i], par.kids[i+1:]...)
+	par.kids = slices.Delete(par.kids, i, i+1)
 	next := max(i-1, 0) // like vim, the pane before takes the space
 	par.kids[next].frac += f.frac
 	heir := par.kids[next]
 	if len(par.kids) == 1 {
 		only := par.kids[0]
-		par.replace(only)
-		if par == t.root {
-			t.root = only
-		}
+		t.replace(par, only)
 		only.merge()
 	}
 	ls := heir.leaves()

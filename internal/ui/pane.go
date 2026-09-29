@@ -54,7 +54,11 @@ func (p *Pane) Layout(r *doc.Renderer, width, height, maxWrap int) error {
 	if p.view != nil && wrap == p.wrap {
 		return nil
 	}
-	anchor := p.TopSource()
+	return p.render(r, wrap, p.TopSource())
+}
+
+// render renders the document at wrap and puts source line anchor on top.
+func (p *Pane) render(r *doc.Renderer, wrap, anchor int) error {
 	v, err := r.Render(p.doc, wrap)
 	if err != nil {
 		return err
@@ -77,13 +81,8 @@ func (p *Pane) Reload(r *doc.Renderer, maxWrap int) (changed bool, err error) {
 		return false, nil
 	}
 	anchor := p.TopSource()
-	p.doc = d
-	p.view = nil
-	if err := p.Layout(r, p.width, p.height, maxWrap); err != nil {
-		return true, err
-	}
-	p.GotoSource(anchor)
-	return true, nil
+	p.doc, p.view = d, nil // never a view of the old text over the new
+	return true, p.render(r, min(p.width, maxWrap), anchor)
 }
 
 // TopSource is the source line shown at the top of the pane.
@@ -248,13 +247,4 @@ func (p *Pane) Render(th theme) []string {
 		out[y] = fit(l, p.width)
 	}
 	return out
-}
-
-// fit truncates or pads a styled line to exactly w cells.
-func fit(s string, w int) string {
-	if ansi.StringWidth(s) > w {
-		s = ansi.Truncate(s, w, "")
-	}
-	pad := w - ansi.StringWidth(s)
-	return s + "\x1b[0m" + strings.Repeat(" ", max(pad, 0))
 }

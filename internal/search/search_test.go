@@ -248,3 +248,38 @@ func TestRunMultiTerm(t *testing.T) {
 		t.Fatal("bad regex in one term should be an error")
 	}
 }
+
+// A common term doesn't crowd out the lines a rarer one shares with it: the
+// limit applies to the lines matching every term, whatever their order.
+func TestRunCommonTermUnderLimit(t *testing.T) {
+	if _, err := exec.LookPath("rg"); err != nil {
+		t.Skip("rg not installed")
+	}
+	dir := t.TempDir()
+	var sb strings.Builder
+	for i := range 50 {
+		if i%10 == 0 {
+			sb.WriteString("common zebra\n")
+		} else {
+			sb.WriteString("common\n")
+		}
+	}
+	for _, name := range []string{"a.md", "b.md"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(sb.String()), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, q := range []string{"common zebra", "zebra common", "c z"} {
+		res, err := Run(context.Background(), Request{Query: q, Scope: Dir, Root: dir, Limit: 20})
+		if err != nil || len(res.Matches) != 10 || res.Files != 2 || res.Truncated {
+			t.Fatalf("%q: %d matches in %d files, truncated %v, %v", q, len(res.Matches), res.Files, res.Truncated, err)
+		}
+		if m := res.Matches[0]; len(m.Terms()) != 2 {
+			t.Fatalf("%q: spans %v in %q", q, m.Spans, m.Text)
+		}
+	}
+	res, err := Run(context.Background(), Request{Query: "zebra common", Scope: Dir, Root: dir, Limit: 4})
+	if err != nil || len(res.Matches) != 4 || !res.Truncated {
+		t.Fatalf("limit: %d matches, truncated %v, %v", len(res.Matches), res.Truncated, err)
+	}
+}

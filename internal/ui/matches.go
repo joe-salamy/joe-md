@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"cmp"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -61,20 +63,9 @@ func newMatches(req search.Request, ms []search.Match) *matches {
 			}
 		}
 	}
-	sort.Ints(lines)
+	slices.Sort(lines)
 	pats, _ := req.Patterns() // on an error, the matched strings will do
-	return &matches{query: req.Query, mode: req.Mode, lines: compactInts(lines), pats: pats, terms: terms, cur: -1}
-}
-
-// SetMatches highlights search matches in the pane. lines are 0-based source
-// lines; terms are the matched strings.
-func (p *Pane) SetMatches(query string, lines []int, terms []string) {
-	lines = append([]int(nil), lines...)
-	sort.Ints(lines)
-	if len(terms) > maxTerms {
-		terms = terms[:maxTerms]
-	}
-	p.setMatches(&matches{query: query, lines: compactInts(lines), terms: terms, cur: -1})
+	return &matches{query: req.Query, mode: req.Mode, lines: slices.Compact(lines), pats: pats, terms: terms, cur: -1}
 }
 
 // setMatches puts m in the pane, indexing it unless it already was, for the
@@ -82,28 +73,13 @@ func (p *Pane) SetMatches(query string, lines []int, terms []string) {
 // keeps them, and its place among them.
 func (p *Pane) setMatches(m *matches) {
 	if old := p.match; old != nil && old.query == m.query && old.mode == m.mode &&
-		old.doc == p.doc && old.view == p.view && sameSet(old.lines, m.lines) {
+		old.doc == p.doc && old.view == p.view && slices.Equal(slices.Sorted(slices.Values(old.lines)), m.lines) {
 		return
 	}
 	p.match = m
 	if m.doc != p.doc || m.view != p.view {
 		p.indexMatches()
 	}
-}
-
-// sameSet reports whether a and b hold the same ints; b is sorted.
-func sameSet(a, b []int) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	a = append([]int(nil), a...)
-	sort.Ints(a)
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 func (p *Pane) ClearMatches() { p.match = nil }
@@ -216,16 +192,15 @@ func (m *matches) index(d *doc.Doc, v *doc.Rendered) {
 	}
 	// Picking the nearest visible hit can reorder matches within a block;
 	// JumpMatch's binary search needs the targets sorted.
-	idx := make([]int, len(m.lines))
-	for i := range idx {
-		idx[i] = i
+	type pair struct{ line, target int }
+	ps := make([]pair, len(m.lines))
+	for i := range ps {
+		ps[i] = pair{m.lines[i], m.target[i]}
 	}
-	sort.SliceStable(idx, func(a, b int) bool { return m.target[idx[a]] < m.target[idx[b]] })
-	lines, target := make([]int, len(idx)), make([]int, len(idx))
-	for i, j := range idx {
-		lines[i], target[i] = m.lines[j], m.target[j]
+	slices.SortStableFunc(ps, func(a, b pair) int { return cmp.Compare(a.target, b.target) })
+	for i, p := range ps {
+		m.lines[i], m.target[i] = p.line, p.target
 	}
-	m.lines, m.target = lines, target
 }
 
 // findInBlock records the highlights in block b and returns the rendered
@@ -247,8 +222,8 @@ func (m *matches) findInBlock(v *doc.Rendered, b int) []int {
 			}
 			m.hits[start+i] = hs
 		}
-		sort.Ints(lines)
-		return compactInts(lines)
+		slices.Sort(lines)
+		return slices.Compact(lines)
 	}
 	if len(m.pats) > 0 {
 		if hits := findPatterns(plain, m.pats); len(hits) > 0 {
@@ -270,11 +245,11 @@ func (m *matches) findInBlock(v *doc.Rendered, b int) []int {
 // nearest returns the element of sorted xs closest to x, preferring the later
 // one on a tie (matches are searched forwards).
 func nearest(xs []int, x int) int {
-	i := sort.SearchInts(xs, x)
+	i, found := slices.BinarySearch(xs, x)
 	switch {
 	case i == len(xs):
 		return xs[i-1]
-	case i == 0 || xs[i] == x:
+	case i == 0 || found:
 		return xs[i]
 	case x-xs[i-1] < xs[i]-x:
 		return xs[i-1]
@@ -303,7 +278,7 @@ func findTerms(line string, terms []string) []cellRange {
 			continue
 		}
 		for i := 0; i+len(term) <= len(folded); {
-			if equalRunes(folded[i:i+len(term)], term) {
+			if slices.Equal(folded[i:i+len(term)], term) {
 				out = append(out, cellRange{start: cells[i], end: cells[i+len(term)]})
 				i += len(term)
 			} else {
@@ -355,7 +330,8 @@ func findPatterns(lines []string, pats []*regexp.Regexp) map[int][]cellRange {
 				continue
 			}
 			from := -1
-			for i := sort.SearchInts(starts, loc[0]+1) - 1; i < len(lines) && starts[i] < loc[1]; i++ {
+			first, _ := slices.BinarySearch(starts, loc[0]+1)
+			for i := first - 1; i < len(lines) && starts[i] < loc[1]; i++ {
 				l := lines[i]
 				s, e := max(loc[0]-starts[i], 0), min(loc[1]-starts[i], len(l))
 				if loc[0] < starts[i] { // continued from the line above
@@ -385,7 +361,7 @@ func mergeRanges(out []cellRange) []cellRange {
 	if len(out) == 0 {
 		return nil
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].start < out[j].start })
+	slices.SortFunc(out, func(a, b cellRange) int { return cmp.Compare(a.start, b.start) })
 	merged := out[:1]
 	for _, c := range out[1:] {
 		last := &merged[len(merged)-1]
@@ -396,25 +372,6 @@ func mergeRanges(out []cellRange) []cellRange {
 		}
 	}
 	return merged
-}
-
-func equalRunes(a, b []rune) bool {
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
-func compactInts(xs []int) []int {
-	out := xs[:0]
-	for i, x := range xs {
-		if i == 0 || x != xs[i-1] {
-			out = append(out, x)
-		}
-	}
-	return out
 }
 
 // decorate applies search highlights to rendered line r.

@@ -69,7 +69,6 @@ func main() {
 	if err != nil {
 		fatal(fmt.Errorf("%s: %w", path, err))
 	}
-	caseMode, _ := search.ParseCase(cfg.Search.Case) // checked by Load
 
 	var docs []*doc.Doc
 	menuDir := ""
@@ -96,7 +95,10 @@ func main() {
 	if cfg.Style == "auto" {
 		cfg.Style = os.Getenv("GLAMOUR_STYLE")
 		if cfg.Style == "" || cfg.Style == "auto" {
-			cfg.Style = map[bool]string{true: "dark", false: "light"}[dark]
+			cfg.Style = "light"
+			if dark {
+				cfg.Style = "dark"
+			}
 		}
 	}
 
@@ -107,7 +109,7 @@ func main() {
 		Keymap:  keymap,
 		Colors:  cfg.Theme,
 		Scope:   cfg.Search.Scope,
-		Mode:    search.Mode{Literal: cfg.Search.Literal, Case: caseMode},
+		Mode:    search.Mode{Literal: cfg.Search.Literal, Case: cfg.Search.Case},
 	})
 	if _, err := tea.NewProgram(app).Run(); err != nil {
 		fatal(err)

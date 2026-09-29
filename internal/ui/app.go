@@ -29,7 +29,7 @@ type Options struct {
 
 	Keymap *Keymap      // nil for the default keys
 	Colors config.Theme // colour changes; empty ones keep the defaults
-	Scope  string       // scope ? starts in: file, dir or repo (the default)
+	Scope  search.Scope // scope ? starts in
 	Mode   search.Mode  // literal and case of searches
 }
 
@@ -101,16 +101,13 @@ func New(docs []*doc.Doc, opts Options) *App {
 		keymap:     opts.Keymap,
 		showTOC:    !opts.NoTOC,
 		showTabs:   !opts.NoTabs,
-		input:      newInput(opts.Dark),
+		input:      newInput(opts.Dark, ""), // setPlaceholder fills it in
 		showBar:    !opts.NoBar,
-		crossScope: search.Repo,
+		crossScope: opts.Scope,
 		mode:       opts.Mode,
 	}
 	if a.keymap == nil {
 		a.keymap = DefaultKeymap()
-	}
-	if s, ok := search.ParseScope(opts.Scope); ok {
-		a.crossScope = s
 	}
 	a.setPlaceholder()
 	for _, d := range docs {
@@ -174,7 +171,6 @@ func (a *App) layout() {
 			a.msg = "render error: " + err.Error()
 		}
 	}
-	a.syncTOC()
 }
 
 // syncTOC points the sidebar cursor at the section being read, unless the
@@ -189,6 +185,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	snap := a.scrollSnapshot()
 	cmd := a.update(msg)
 	a.scrollBind(snap)
+	// The sidebar follows the document, except that the wheel may scroll it
+	// away from the current heading; wheel syncs it when it scrolls a pane.
+	if _, ok := msg.(tea.MouseWheelMsg); !ok {
+		a.syncTOC()
+	}
 	return a, cmd
 }
 
@@ -261,7 +262,7 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.inputKey(msg)
 	}
 	if a.help != nil {
-		cmd, _ := a.dispatch(&a.help.pending, k, 0, "help")
+		cmd, _ := a.dispatch(&a.help.pending, k, 0, ctxHelp)
 		return cmd
 	}
 	// Digits are a count, before a command or between ctrl+w and its key.
@@ -272,16 +273,16 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 	count := a.count
 	a.count = 0
 
-	var ctxs []string
+	var ctxs []keyCtx
 	switch {
 	case a.window:
-		ctxs = []string{"window"}
+		ctxs = []keyCtx{ctxWindow}
 	case a.focus == focusTOC:
-		ctxs = []string{"toc", "normal"}
+		ctxs = []keyCtx{ctxTOC, ctxNormal}
 	case a.focus == focusResults:
-		ctxs = []string{"results", "normal"}
+		ctxs = []keyCtx{ctxResults, ctxNormal}
 	default:
-		ctxs = []string{"normal"}
+		ctxs = []keyCtx{ctxNormal}
 	}
 	win := a.window
 	cmd, _ := a.dispatch(&a.pending, k, count, ctxs...)
@@ -290,7 +291,6 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 	} else if win {
 		a.window = false
 	}
-	a.syncTOC()
 	return cmd
 }
 
@@ -358,7 +358,6 @@ func (a *App) cycleFocus(d int) {
 	if s.n != a.tab().focus {
 		a.focusLeaf(s.n)
 	}
-	a.syncTOC()
 }
 
 // editDoneMsg arrives when micro exits.
@@ -392,7 +391,6 @@ func (a *App) editDone(m editDoneMsg) tea.Cmd {
 	if line != m.session.Line {
 		a.pane.GotoSource(min(line, a.pane.doc.Lines) - 1)
 	}
-	a.syncTOC()
 	switch {
 	case m.err != nil:
 		a.msg = "micro: " + m.err.Error()
@@ -412,7 +410,7 @@ func (a *App) reload() (bool, tea.Cmd) {
 	changed := false
 	var cmds []tea.Cmd
 	for _, p := range a.allPanes() {
-		if !samePath(p.doc.Path, path) {
+		if p.doc.Path != path {
 			continue
 		}
 		c, err := p.Reload(a.renderer, a.opts.MaxWrap)
@@ -453,6 +451,7 @@ func (a *App) wheel(m tea.Mouse) {
 		} else if m.Button == tea.MouseWheelDown {
 			a.stepTab(1)
 		}
+		a.syncTOC()
 		return
 	}
 	m.Y -= a.tabBarHeight() // from here on, rows count from the top of the body
@@ -487,7 +486,6 @@ func (a *App) click(m tea.Mouse) tea.Cmd {
 			switch m.Button {
 			case tea.MouseLeft:
 				a.activate(i)
-				a.syncTOC()
 			case tea.MouseMiddle:
 				a.activate(i)
 				if !a.closeTab() {
