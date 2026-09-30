@@ -23,12 +23,13 @@ explains each feature.
 
 ## File
 
-| Key      | Action                        | Name               |
-|----------|-------------------------------|--------------------|
-| `e`      | edit in micro at the top line | `normal.edit`      |
-| `r`      | reload from disk              | `normal.reload`    |
-| `ctrl+g` | show the file's full path     | `normal.show_path` |
-| `o`      | open the file menu            | `normal.open_menu` |
+| Key      | Action                           | Name                             |
+|----------|----------------------------------|----------------------------------|
+| `e`      | edit in micro at the top line    | `normal.edit`                    |
+| `r`      | reload from disk                 | `normal.reload`                  |
+| `ctrl+g` | show the file's full path        | `normal.show_path`               |
+| `yn/yp`  | copy the file's name / full path | `normal.copy_name` / `copy_path` |
+| `o`      | open the file menu               | `normal.open_menu`               |
 
 ## Search
 

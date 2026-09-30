@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"path/filepath"
+
 	"github.com/joe-salamy/joe-md/internal/search"
 
 	tea "charm.land/bubbletea/v2"
@@ -167,6 +169,20 @@ func init() {
 			}},
 		&action{name: "show_path", desc: "show the file's full path", keys: keys("ctrl+g"),
 			run: docOnly(func(a *App, c call) { a.msg = a.pane.doc.Path })},
+		&action{name: "copy_name", desc: "copy the file's name", row: "copy the file's name / full path", keys: keys("y n"),
+			run: func(a *App, c call) tea.Cmd {
+				if a.pane == nil {
+					return nil
+				}
+				return a.copyText(filepath.Base(a.pane.doc.Path))
+			}},
+		&action{name: "copy_path", desc: "copy the file's full path", row: "copy the file's name / full path", keys: keys("y p"),
+			run: func(a *App, c call) tea.Cmd {
+				if a.pane == nil {
+					return nil
+				}
+				return a.copyText(a.pane.doc.Path)
+			}},
 		&action{name: "open_menu", desc: "open the file menu", keys: keys("o"),
 			run: func(a *App, c call) tea.Cmd { return a.menuHere() }},
 	)

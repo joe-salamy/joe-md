@@ -140,6 +140,7 @@ one page, and `f1` (or `g?`) shows them inside joe-md, as currently bound:
 | `ctrl+s`                     | show / hide the search bar          |
 | `tab` `shift+tab`            | cycle focus: sidebar, each pane, results |
 | `ctrl+g`                     | show the file's full path           |
+| `yn` `yp`                     | copy the file's name / full path to the clipboard |
 | `o`                          | open the file menu                  |
 | `q`                          | close the pane, else the tab; quits on the last one (the only way) |
 | `Q` `ctrl+c`                 | quit                                |
