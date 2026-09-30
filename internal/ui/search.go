@@ -424,6 +424,9 @@ func (a *App) barView() string {
 			if cur > 0 {
 				count = strconv.Itoa(cur) + "/" + strconv.Itoa(total)
 			}
+			if n := a.crossTotal(); n > 0 {
+				count += " in file · " + strconv.Itoa(n) + " in all"
+			}
 			right = th.bar.Render(count) + th.barDim.Render("  "+a.hint(ctxNormal, "next_match")+"/"+a.hint(ctxNormal, "prev_match")+" · "+a.hint(ctxNormal, "toggle_results")+" list ")
 		}
 		left := th.barPrompt.Render(" / ") + th.bar.Render(q)
@@ -432,6 +435,17 @@ func (a *App) barView() string {
 	}
 	return fit(th.barDim.Render(" "+a.hint(ctxNormal, "search_file")+" search file   "+a.hint(ctxNormal, "search_files")+" search "+
 		a.crossScope.String()+"   "+a.hint(ctxNormal, "toggle_search_bar")+" hide bar   "+a.hint(ctxNormal, "help")+" keys"), w)
+}
+
+// crossTotal is the number of matches across all files when the current
+// pane's matches came from a directory or repo search, or 0.
+func (a *App) crossTotal() int {
+	r := a.results
+	if r == nil || r.req.Scope == search.File || a.pane.match == nil ||
+		r.req.Query != a.pane.match.query || r.req.Mode != a.pane.match.mode {
+		return 0
+	}
+	return len(r.res.Matches)
 }
 
 // paneQuery is the current pane's search, or "" when no file is open.
