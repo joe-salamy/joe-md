@@ -432,13 +432,15 @@ func stream(ctx context.Context, rg string, req Request, term string, stdin io.R
 	return nil
 }
 
-// finish sorts matches by path, in menu order, then line, keeps the first
-// limit, and counts the files.
+// finish sorts each match's spans, dropping any two terms matched alike,
+// sorts matches by path, in menu order, then line, keeps the first limit, and
+// counts the files.
 func finish(ms []Match, limit int) Result {
 	for i := range ms {
 		slices.SortFunc(ms[i].Spans, func(a, b [2]int) int {
 			return cmp.Or(cmp.Compare(a[0], b[0]), cmp.Compare(a[1], b[1]))
 		})
+		ms[i].Spans = slices.Compact(ms[i].Spans)
 	}
 	slices.SortStableFunc(ms, func(a, b Match) int {
 		return cmp.Or(natural.PathCompare(a.Path, b.Path), cmp.Compare(a.Line, b.Line))

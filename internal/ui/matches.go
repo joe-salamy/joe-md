@@ -2,6 +2,7 @@ package ui
 
 import (
 	"cmp"
+	"maps"
 	"regexp"
 	"slices"
 	"sort"
@@ -23,27 +24,44 @@ import (
 // strings ripgrep matched are looked up instead, ignoring case. If the text is
 // not visible either way (say it was a link URL), the line estimated from the
 // source position gets a gutter mark.
+//
+// Each occurrence found is a match of its own: n / N step through them and
+// the count is theirs, so a line with a term twice is two matches, as it is
+// two rows in the results list.
 
-// cellRange is a highlighted run of cells [start, end) on a rendered line.
-// from is the rendered line its match starts on, earlier for the rest of a
-// match that wrapped.
-type cellRange struct{ start, end, from int }
+// cellRange is a highlighted run of cells [start, end) on a rendered line,
+// part of occurrence occ. An occurrence that wraps has a range on each line.
+type cellRange struct{ start, end, occ int }
+
+// occurrence is one match in the rendering. line and col are where it
+// starts; src and nth tie it to the nth match ripgrep found on source line
+// src, so it can be found from a result and the other way round.
+type occurrence struct {
+	line, col int
+	src, nth  int
+	mark      bool // not visible as text: a gutter mark on line instead
+}
+
+// piece is a run of cells [start, end) of a rendered line, part of an
+// occurrence.
+type piece struct{ line, start, end int }
 
 type matches struct {
 	query string
 	mode  search.Mode
-	lines []int            // 0-based source lines with a match, distinct, in target order
+	lines []int            // 0-based source lines with a match, distinct, sorted
+	count map[int]int      // matches ripgrep found on each source line, if more than one
 	pats  []*regexp.Regexp // the query's terms, to find matches in rendered lines
 	terms []string         // matched text, the fallback when pats find nothing
-	cur   int              // current match, or -1
+	cur   int              // current occurrence, or -1
 
 	// Derived from a rendering by index. doc and view are what it was
 	// indexed against, so an index built off the UI thread can be checked.
-	doc    *doc.Doc
-	view   *doc.Rendered
-	target []int               // rendered line to jump to for each match
-	hits   map[int][]cellRange // rendered line -> highlighted cells
-	marks  map[int]bool        // rendered lines with a match not visible as text
+	doc   *doc.Doc
+	view  *doc.Rendered
+	occs  []occurrence        // in rendering order
+	hits  map[int][]cellRange // rendered line -> highlighted cells, by start
+	marks map[int]bool        // rendered lines with a match not visible as text
 }
 
 const maxTerms = 64
@@ -52,10 +70,14 @@ const maxTerms = 64
 // yet indexed.
 func newMatches(req search.Request, ms []search.Match) *matches {
 	lines := make([]int, 0, len(ms))
+	count := map[int]int{}
 	var terms []string
 	seen := map[string]bool{}
 	for _, m := range ms {
 		lines = append(lines, m.Line-1)
+		if n := len(m.Spans); n > 1 {
+			count[m.Line-1] = n
+		}
 		for _, t := range m.Terms() {
 			if k := strings.ToLower(t); !seen[k] && len(terms) < maxTerms {
 				seen[k] = true
@@ -65,7 +87,7 @@ func newMatches(req search.Request, ms []search.Match) *matches {
 	}
 	slices.Sort(lines)
 	pats, _ := req.Patterns() // on an error, the matched strings will do
-	return &matches{query: req.Query, mode: req.Mode, lines: slices.Compact(lines), pats: pats, terms: terms, cur: -1}
+	return &matches{query: req.Query, mode: req.Mode, lines: slices.Compact(lines), count: count, pats: pats, terms: terms, cur: -1}
 }
 
 // setMatches puts m in the pane, indexing it unless it already was, for the
@@ -73,7 +95,7 @@ func newMatches(req search.Request, ms []search.Match) *matches {
 // keeps them, and its place among them.
 func (p *Pane) setMatches(m *matches) {
 	if old := p.match; old != nil && old.query == m.query && old.mode == m.mode &&
-		old.doc == p.doc && old.view == p.view && slices.Equal(slices.Sorted(slices.Values(old.lines)), m.lines) {
+		old.doc == p.doc && old.view == p.view && slices.Equal(old.lines, m.lines) && maps.Equal(old.count, m.count) {
 		return
 	}
 	p.match = m
@@ -97,7 +119,17 @@ func (p *Pane) MatchPos() (cur, total int) {
 	if p.match == nil {
 		return 0, 0
 	}
-	return p.match.cur + 1, len(p.match.lines)
+	return p.match.cur + 1, len(p.match.occs)
+}
+
+// CurrentMatch is the source line (0-based) and the index among that line's
+// matches of the current match.
+func (p *Pane) CurrentMatch() (src, nth int, ok bool) {
+	m := p.match
+	if m == nil || m.cur < 0 || m.cur >= len(m.occs) {
+		return 0, 0, false
+	}
+	return m.occs[m.cur].src, m.occs[m.cur].nth, true
 }
 
 // JumpMatch moves to the n-th match after (n > 0) or before (n < 0) the
@@ -108,25 +140,25 @@ func (p *Pane) MatchPos() (cur, total int) {
 // It reports false if there are no matches.
 func (p *Pane) JumpMatch(n int, inclusive bool) (wrapped, ok bool) {
 	m := p.match
-	if m == nil || len(m.target) == 0 || n == 0 {
+	if m == nil || len(m.occs) == 0 || n == 0 {
 		return false, false
 	}
-	count := len(m.target)
+	count := len(m.occs)
 	var i int
 	switch {
-	case !inclusive && m.cur >= 0 && m.cur < count && p.visible(m.target[m.cur]):
+	case !inclusive && m.cur >= 0 && m.cur < count && p.visible(m.occs[m.cur].line):
 		i = m.cur + sign(n)
 	case n > 0:
 		i = sort.Search(count, func(i int) bool {
-			return m.target[i] > p.offset || inclusive && m.target[i] == p.offset
+			return m.occs[i].line > p.offset || inclusive && m.occs[i].line == p.offset
 		})
 	default:
-		i = sort.Search(count, func(i int) bool { return m.target[i] >= p.offset }) - 1
+		i = sort.Search(count, func(i int) bool { return m.occs[i].line >= p.offset }) - 1
 	}
 	i += n - sign(n)
 	wrapped = i < 0 || i >= count
 	m.cur = (i%count + count) % count
-	p.reveal(m.target[m.cur])
+	p.reveal(m.occs[m.cur].line)
 	return wrapped, true
 }
 
@@ -140,20 +172,41 @@ func sign(n int) int {
 // visible reports whether rendered line r is in view.
 func (p *Pane) visible(r int) bool { return r >= p.offset && r < p.offset+p.height }
 
-// GotoMatchLine jumps to the match on 0-based source line src (scrolling
+// GotoMatch jumps to the nth match on 0-based source line src (scrolling
 // only if it is out of view), or to the line itself if it has no match.
-func (p *Pane) GotoMatchLine(src int) {
-	if m := p.match; m != nil && m.target != nil {
-		for i, l := range m.lines {
-			if l == src {
-				m.cur = i
-				p.reveal(m.target[i])
-				return
-			}
-		}
+func (p *Pane) GotoMatch(src, nth int) {
+	if m := p.match; m != nil && len(m.occs) > 0 {
+		m.cur = m.find(src, nth)
+		p.reveal(m.occs[m.cur].line)
+		return
 	}
 	p.GotoSource(src)
 }
+
+// find returns the occurrence for the nth match on source line src: that
+// one if it was placed, else the line's last before it, else the one nearest
+// where the line renders.
+func (m *matches) find(src, nth int) int {
+	best := -1
+	for i, o := range m.occs {
+		if o.src == src && (best < 0 || o.nth <= nth) {
+			best = i
+		}
+	}
+	if best >= 0 {
+		return best
+	}
+	est := m.view.SourceToRendered(m.doc, max(0, min(src, m.doc.Lines-1)))
+	best = 0
+	for i, o := range m.occs {
+		if abs(o.line-est) <= abs(m.occs[best].line-est) {
+			best = i
+		}
+	}
+	return best
+}
+
+func abs(n int) int { return max(n, -n) }
 
 // indexMatches places the matches in the current rendering.
 func (p *Pane) indexMatches() {
@@ -166,101 +219,99 @@ func (p *Pane) indexMatches() {
 // can run in the background on matches nothing else has yet.
 func (m *matches) index(d *doc.Doc, v *doc.Rendered) {
 	m.doc, m.view = d, v
-	m.target, m.hits, m.marks = nil, nil, nil
+	m.occs, m.hits, m.marks = nil, nil, nil
 	if v == nil || len(d.Blocks) == 0 {
 		return
 	}
-	m.target = make([]int, len(m.lines))
 	m.hits = map[int][]cellRange{}
 	m.marks = map[int]bool{}
-	blockHits := map[int][]int{} // block -> rendered lines with visible hits
-	for i, src := range m.lines {
-		src = max(0, min(src, d.Lines-1))
-		b := d.BlockAt(src)
-		lines, done := blockHits[b]
-		if !done {
-			lines = m.findInBlock(v, b)
-			blockHits[b] = lines
+	block := func(i int) int { return d.BlockAt(max(0, min(m.lines[i], d.Lines-1))) }
+	var occs []occurrence
+	var found [][]piece // each occurrence's pieces
+	for i := 0; i < len(m.lines); {
+		b := block(i)
+		j := i + 1
+		for j < len(m.lines) && block(j) == b {
+			j++
 		}
-		est := v.SourceToRendered(d, src)
-		if len(lines) == 0 {
-			m.target[i] = est
-			m.marks[est] = true
+		srcs := m.lines[i:j]
+		i = j
+		pieces := m.findInBlock(v, b)
+		if len(pieces) == 0 {
+			for _, s := range srcs {
+				est := v.SourceToRendered(d, max(0, min(s, d.Lines-1)))
+				occs = append(occs, occurrence{line: est, src: s, mark: true})
+				found = append(found, nil)
+			}
 			continue
 		}
-		m.target[i] = nearest(lines, est)
+		// The block's occurrences go to its source lines in order, as many
+		// to each line as ripgrep found on it; any extra go to the last.
+		k, nth := 0, 0
+		for _, ps := range pieces {
+			if nth >= max(m.count[srcs[k]], 1) && k < len(srcs)-1 {
+				k, nth = k+1, 0
+			}
+			occs = append(occs, occurrence{line: ps[0].line, col: ps[0].start, src: srcs[k], nth: nth})
+			found = append(found, ps)
+			nth++
+		}
 	}
-	// Picking the nearest visible hit can reorder matches within a block;
-	// JumpMatch's binary search needs the targets sorted.
-	type pair struct{ line, target int }
-	ps := make([]pair, len(m.lines))
-	for i := range ps {
-		ps[i] = pair{m.lines[i], m.target[i]}
+	// Blocks render in order, so this only settles ties; JumpMatch's binary
+	// search needs the occurrences sorted.
+	order := make([]int, len(occs))
+	for i := range order {
+		order[i] = i
 	}
-	slices.SortStableFunc(ps, func(a, b pair) int { return cmp.Compare(a.target, b.target) })
-	for i, p := range ps {
-		m.lines[i], m.target[i] = p.line, p.target
+	slices.SortStableFunc(order, func(a, b int) int {
+		return cmp.Or(cmp.Compare(occs[a].line, occs[b].line), cmp.Compare(occs[a].col, occs[b].col))
+	})
+	m.occs = make([]occurrence, len(occs))
+	for n, i := range order {
+		m.occs[n] = occs[i]
+		if occs[i].mark {
+			m.marks[occs[i].line] = true
+		}
+		for _, p := range found[i] {
+			m.hits[p.line] = append(m.hits[p.line], cellRange{p.start, p.end, n})
+		}
+	}
+	for _, hs := range m.hits {
+		slices.SortStableFunc(hs, func(a, b cellRange) int { return cmp.Compare(a.start, b.start) })
 	}
 }
 
-// findInBlock records the highlights in block b and returns the rendered
-// lines that have any. The query's patterns come first; the matched strings
-// only if the patterns find nothing in the block.
-func (m *matches) findInBlock(v *doc.Rendered, b int) []int {
+// findInBlock returns the occurrences in block b, in order, each as its
+// pieces on rendered lines. The query's patterns come first; the matched
+// strings only if the patterns find nothing in the block.
+func (m *matches) findInBlock(v *doc.Rendered, b int) [][]piece {
 	start, end := v.BlockSpan(b)
 	plain := make([]string, end-start)
 	for r := start; r < end; r++ {
 		plain[r-start] = ansi.Strip(v.Lines[r])
 	}
-	// The lines where matches start, and each line's highlights.
-	record := func(hits map[int][]cellRange) []int {
-		var lines []int
-		for i, hs := range hits {
-			for j := range hs {
-				hs[j].from += start
-				lines = append(lines, hs[j].from)
-			}
-			m.hits[start+i] = hs
-		}
-		slices.Sort(lines)
-		return slices.Compact(lines)
-	}
+	var out [][]piece
 	if len(m.pats) > 0 {
-		if hits := findPatterns(plain, m.pats); len(hits) > 0 {
-			return record(hits)
-		}
+		out = findPatterns(plain, m.pats)
 	}
-	hits := map[int][]cellRange{}
-	for i, l := range plain {
-		if hs := findTerms(l, m.terms); len(hs) > 0 {
-			for j := range hs {
-				hs[j].from = i
+	if len(out) == 0 {
+		for i, l := range plain {
+			for _, c := range findTerms(l, m.terms) {
+				out = append(out, []piece{{i, c[0], c[1]}})
 			}
-			hits[i] = hs
 		}
 	}
-	return record(hits)
-}
-
-// nearest returns the element of sorted xs closest to x, preferring the later
-// one on a tie (matches are searched forwards).
-func nearest(xs []int, x int) int {
-	i, found := slices.BinarySearch(xs, x)
-	switch {
-	case i == len(xs):
-		return xs[i-1]
-	case i == 0 || found:
-		return xs[i]
-	case x-xs[i-1] < xs[i]-x:
-		return xs[i-1]
-	default:
-		return xs[i]
+	for _, ps := range out {
+		for j := range ps {
+			ps[j].line += start
+		}
 	}
+	return out
 }
 
-// findTerms returns the cells of plain-text line that match any term,
-// ignoring case, merged and sorted.
-func findTerms(line string, terms []string) []cellRange {
+// findTerms returns the cells [start, end) of plain-text line that match any
+// term, ignoring case, one per occurrence, sorted.
+func findTerms(line string, terms []string) [][2]int {
 	if line == "" || len(terms) == 0 {
 		return nil
 	}
@@ -271,7 +322,7 @@ func findTerms(line string, terms []string) []cellRange {
 		folded[i] = unicode.ToLower(r)
 		cells[i+1] = cells[i] + ansi.StringWidth(string(r))
 	}
-	var out []cellRange
+	var out [][2]int
 	for _, t := range terms {
 		term := []rune(strings.ToLower(t))
 		if len(term) == 0 {
@@ -279,22 +330,23 @@ func findTerms(line string, terms []string) []cellRange {
 		}
 		for i := 0; i+len(term) <= len(folded); {
 			if slices.Equal(folded[i:i+len(term)], term) {
-				out = append(out, cellRange{start: cells[i], end: cells[i+len(term)]})
+				out = append(out, [2]int{cells[i], cells[i+len(term)]})
 				i += len(term)
 			} else {
 				i++
 			}
 		}
 	}
-	return mergeRanges(out)
+	slices.SortFunc(out, func(a, b [2]int) int { return cmp.Or(cmp.Compare(a[0], b[0]), cmp.Compare(a[1], b[1])) })
+	return slices.Compact(out)
 }
 
-// findPatterns returns the cells that match any pattern in the plain-text
-// lines of a block, by index into lines, each line's merged and sorted. The
-// lines are searched as one text, so a match can run across a wrap; each line
-// gets its part, less the wrap's padding and indent. Empty matches are
-// skipped.
-func findPatterns(lines []string, pats []*regexp.Regexp) map[int][]cellRange {
+// findPatterns returns the occurrences of any pattern in the plain-text lines
+// of a block, each as its pieces by index into lines, in order of where they
+// start. The lines are searched as one text, so a match can run across a
+// wrap; each line gets its part, less the wrap's padding and indent. Empty
+// matches are skipped, and two patterns matching the same text count once.
+func findPatterns(lines []string, pats []*regexp.Regexp) [][]piece {
 	if len(pats) == 0 {
 		return nil
 	}
@@ -323,13 +375,13 @@ func findPatterns(lines []string, pats []*regexp.Regexp) map[int][]cellRange {
 		}
 		return cells[i][b]
 	}
-	out := map[int][]cellRange{}
+	var out [][]piece
 	for _, re := range pats {
 		for _, loc := range re.FindAllStringIndex(text, -1) {
 			if loc[0] == loc[1] {
 				continue
 			}
-			from := -1
+			var ps []piece
 			first, _ := slices.BinarySearch(starts, loc[0]+1)
 			for i := first - 1; i < len(lines) && starts[i] < loc[1]; i++ {
 				l := lines[i]
@@ -340,38 +392,19 @@ func findPatterns(lines []string, pats []*regexp.Regexp) map[int][]cellRange {
 				if loc[1] > starts[i]+len(l) { // goes on to the line below
 					e = len(strings.TrimRight(l[:e], " \u00a0"))
 				}
-				if s >= e {
-					continue
+				if s < e {
+					ps = append(ps, piece{i, col(i, s), col(i, e)})
 				}
-				if from < 0 {
-					from = i
-				}
-				out[i] = append(out[i], cellRange{col(i, s), col(i, e), from})
+			}
+			if len(ps) > 0 {
+				out = append(out, ps)
 			}
 		}
 	}
-	for i := range out {
-		out[i] = mergeRanges(out[i])
-	}
-	return out
-}
-
-// mergeRanges sorts out and merges the ranges that overlap.
-func mergeRanges(out []cellRange) []cellRange {
-	if len(out) == 0 {
-		return nil
-	}
-	slices.SortFunc(out, func(a, b cellRange) int { return cmp.Compare(a.start, b.start) })
-	merged := out[:1]
-	for _, c := range out[1:] {
-		last := &merged[len(merged)-1]
-		if c.start <= last.end {
-			last.end = max(last.end, c.end)
-		} else {
-			merged = append(merged, c)
-		}
-	}
-	return merged
+	slices.SortStableFunc(out, func(a, b []piece) int {
+		return cmp.Or(cmp.Compare(a[0].line, b[0].line), cmp.Compare(a[0].start, b[0].start), cmp.Compare(a[0].end, b[0].end))
+	})
+	return slices.CompactFunc(out, func(a, b []piece) bool { return slices.Equal(a, b) })
 }
 
 // decorate applies search highlights to rendered line r.
@@ -380,23 +413,22 @@ func (p *Pane) decorate(r int, s string, th theme) string {
 	if m == nil || m.hits == nil {
 		return s
 	}
-	cur := -1
-	if m.cur >= 0 {
-		cur = m.target[m.cur]
-	}
-	current := cur == r
 	if hs := m.hits[r]; len(hs) > 0 {
 		var sb strings.Builder
 		prev := 0
 		for _, h := range hs {
+			if h.end <= prev {
+				continue // inside an overlapping occurrence before it
+			}
 			// The current match is highlighted on every line it wraps onto.
 			style := th.match
-			if h.from == cur {
+			if h.occ == m.cur {
 				style = th.matchCur
 			}
-			sb.WriteString(ansi.Cut(s, prev, h.start))
+			start := max(h.start, prev)
+			sb.WriteString(ansi.Cut(s, prev, start))
 			sb.WriteString("\x1b[0m")
-			sb.WriteString(style.Render(ansi.Strip(ansi.Cut(s, h.start, h.end))))
+			sb.WriteString(style.Render(ansi.Strip(ansi.Cut(s, start, h.end))))
 			prev = h.end
 		}
 		// TruncateLeft keeps the escape codes before the cut, restoring the
@@ -406,7 +438,7 @@ func (p *Pane) decorate(r int, s string, th theme) string {
 	}
 	if m.marks[r] {
 		style := th.matchMark
-		if current {
+		if m.cur >= 0 && m.cur < len(m.occs) && m.occs[m.cur].mark && m.occs[m.cur].line == r {
 			style = th.matchMarkCur
 		}
 		s = style.Render("▌") + "\x1b[0m" + ansi.TruncateLeft(s, 1, "")

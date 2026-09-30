@@ -431,7 +431,7 @@ func TestBackgroundIndex(t *testing.T) {
 	stale := indexed(req, res.Matches, p.doc, nil)
 	p.match = nil
 	p.setMatches(stale)
-	if stale.view != p.view || len(stale.target) != 50 {
+	if stale.view != p.view || len(stale.occs) != 50 {
 		t.Fatal("a stale index should be rebuilt")
 	}
 }

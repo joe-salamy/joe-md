@@ -247,7 +247,7 @@ func (a *App) searchDone(m searchDoneMsg) {
 		} else {
 			a.pane.setMatches(newMatches(m.req, a.results.InFile(a.pane.doc.Path)))
 		}
-		a.msg = plural(len(matches), "match", "matches") + " in " + plural(m.res.Files, "file", "files")
+		a.msg = plural(a.results.Len(), "match", "matches") + " in " + plural(m.res.Files, "file", "files")
 		if m.res.Truncated {
 			a.msg += " (limit reached)"
 		}
@@ -255,7 +255,7 @@ func (a *App) searchDone(m searchDoneMsg) {
 }
 
 func (a *App) setResults(req search.Request, res search.Result) {
-	a.results = &Results{req: req, res: res}
+	a.results = newResults(req, res)
 	if len(res.Matches) == 0 {
 		a.showResults = false
 		if a.focus == focusResults {
@@ -288,12 +288,9 @@ func (a *App) syncResults() {
 		r.req.Query != p.match.query || r.req.Mode != p.match.mode {
 		return
 	}
-	line := p.match.lines[p.match.cur] + 1
-	for i, m := range r.res.Matches {
-		if m.Line == line && m.Path == p.doc.Path {
-			r.Select(i, a.resultRows())
-			return
-		}
+	src, nth, _ := p.CurrentMatch()
+	if i := r.Find(p.doc.Path, src+1, nth); i >= 0 {
+		r.Select(i, a.resultRows())
 	}
 }
 
@@ -327,15 +324,15 @@ func (a *App) reportJump(n int, wrapped bool) {
 // openResult shows the selected result, with the rest of that file's matches
 // highlighted for n / N.
 func (a *App) openResult(mode openMode) {
-	m := a.results.Current()
+	m, nth := a.results.Current()
 	if !a.openAt(m.Path, mode) {
 		return
 	}
 	a.pane.setMatches(newMatches(a.results.req, a.results.InFile(m.Path)))
-	a.pane.GotoMatchLine(m.Line - 1)
+	a.pane.GotoMatch(m.Line-1, nth)
 	a.focus = focusDoc
 	a.msg = relPath(a.results.req, m.Path) + ":" + strconv.Itoa(m.Line) +
-		"  (" + strconv.Itoa(a.results.cursor+1) + "/" + strconv.Itoa(len(a.results.res.Matches)) + ")"
+		"  (" + strconv.Itoa(a.results.cursor+1) + "/" + strconv.Itoa(a.results.Len()) + ")"
 }
 
 // stepResult is ]q / [q: open the next or previous result from anywhere.
@@ -445,7 +442,7 @@ func (a *App) crossTotal() int {
 		r.req.Query != a.pane.match.query || r.req.Mode != a.pane.match.mode {
 		return 0
 	}
-	return len(r.res.Matches)
+	return r.Len()
 }
 
 // paneQuery is the current pane's search, or "" when no file is open.

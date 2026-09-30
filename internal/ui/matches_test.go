@@ -14,19 +14,17 @@ import (
 
 func TestFindTerms(t *testing.T) {
 	got := findTerms("Setup the SETUP and set", []string{"setup"})
-	want := []cellRange{{start: 0, end: 5}, {start: 10, end: 15}}
-	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+	want := [][2]int{{0, 5}, {10, 15}}
+	if !slices.Equal(got, want) {
 		t.Fatalf("got %v want %v", got, want)
 	}
 	// Wide characters take two cells.
-	got = findTerms("日本 go", []string{"go"})
-	if len(got) != 1 || got[0] != (cellRange{start: 5, end: 7}) {
+	if got = findTerms("日本 go", []string{"go"}); !slices.Equal(got, [][2]int{{5, 7}}) {
 		t.Fatalf("wide: %v", got)
 	}
-	// Overlapping terms merge.
-	got = findTerms("abcdef", []string{"abc", "cde"})
-	if len(got) != 1 || got[0] != (cellRange{start: 0, end: 5}) {
-		t.Fatalf("merge: %v", got)
+	// Overlapping terms are two occurrences.
+	if got = findTerms("abcdef", []string{"cde", "abc"}); !slices.Equal(got, [][2]int{{0, 3}, {2, 5}}) {
+		t.Fatalf("overlap: %v", got)
 	}
 }
 
@@ -35,16 +33,22 @@ func TestFindPatterns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Cells, not bytes: the wide characters take two cells each.
-	got := findPatterns([]string{"setup 日本 Up"}, pats)
-	want := []cellRange{{6, 10, 0}, {11, 13, 0}}
-	if len(got) != 1 || len(got[0]) != 2 || got[0][0] != want[0] || got[0][1] != want[1] {
+	// Cells, not bytes: the wide characters take two cells each. Each
+	// occurrence is its own, in order.
+	got := findPatterns([]string{"setup 日本 Up 日本"}, pats)
+	want := [][]piece{{{0, 6, 10}}, {{0, 11, 13}}, {{0, 14, 18}}}
+	if !slices.EqualFunc(got, want, slices.Equal) {
 		t.Fatalf("got %v want %v", got, want)
 	}
 	// Empty matches are not highlights.
 	pats, _ = search.Request{Query: "x*"}.Patterns()
 	if got := findPatterns([]string{"abc"}, pats); len(got) != 0 {
 		t.Fatalf("empty matches: %v", got)
+	}
+	// Two terms matching the same text are one occurrence.
+	pats, _ = search.Request{Query: "ab a."}.Patterns()
+	if got := findPatterns([]string{"ab ab"}, pats); len(got) != 2 {
+		t.Fatalf("same text: %v", got)
 	}
 }
 
@@ -61,24 +65,12 @@ func TestFindPatternsAcrossWrap(t *testing.T) {
 		"  string here",
 	}
 	got := findPatterns(lines, pats)
-	want := map[int][]cellRange{
-		0: {{6, 15, 0}},
-		1: {{2, 8, 0}, {14, 23, 1}},
-		2: {{2, 8, 1}},
+	want := [][]piece{
+		{{0, 6, 15}, {1, 2, 8}},
+		{{1, 14, 23}, {2, 2, 8}},
 	}
-	if len(got) != len(want) {
+	if !slices.EqualFunc(got, want, slices.Equal) {
 		t.Fatalf("got %v want %v", got, want)
-	}
-	for i, w := range want {
-		g := got[i]
-		if len(g) != len(w) {
-			t.Fatalf("line %d: got %v want %v", i, g, w)
-		}
-		for j := range w {
-			if g[j] != w[j] {
-				t.Fatalf("line %d: got %v want %v", i, g, w)
-			}
-		}
 	}
 }
 
@@ -88,10 +80,10 @@ func TestMatchesUsePatterns(t *testing.T) {
 	line := func(req search.Request, spans ...[2]int) []cellRange {
 		m := newMatches(req, []search.Match{{Line: 1, Text: "setup is up and UP", Spans: spans}})
 		p.setMatches(m)
-		return m.hits[m.target[0]]
+		return m.hits[m.occs[0].line]
 	}
 	hitText := func(hs []cellRange) []string {
-		plain := ansi.Strip(p.view.Lines[p.match.target[0]])
+		plain := ansi.Strip(p.view.Lines[p.match.occs[0].line])
 		var out []string
 		for _, h := range hs {
 			out = append(out, ansi.Cut(plain, h.start, h.end))
@@ -114,15 +106,6 @@ func TestMatchesUsePatterns(t *testing.T) {
 	hs = line(search.Request{Query: `^setup`}, [2]int{0, 5})
 	if got := hitText(hs); len(got) != 1 || got[0] != "setup" {
 		t.Fatalf("fallback: %q", got)
-	}
-}
-
-func TestNearest(t *testing.T) {
-	xs := []int{2, 6, 10}
-	for x, want := range map[int]int{0: 2, 2: 2, 4: 6, 5: 6, 7: 6, 8: 10, 99: 10} {
-		if got := nearest(xs, x); got != want {
-			t.Errorf("nearest(%d) = %d, want %d", x, got, want)
-		}
 	}
 }
 
@@ -151,16 +134,16 @@ func TestMatchesHighlightAndJump(t *testing.T) {
 	setTestMatches(p, "needle", []int{2, 6, 8}, []string{"needle"})
 
 	m := p.match
-	if len(m.target) != 3 {
-		t.Fatalf("targets %v", m.target)
+	if len(m.occs) != 3 {
+		t.Fatalf("occurrences %v", m.occs)
 	}
 	// Bold markup is gone in the rendering but the word is still found.
-	if hs := m.hits[m.target[0]]; len(hs) != 1 {
-		t.Fatalf("line %q hits %v", ansi.Strip(p.view.Lines[m.target[0]]), hs)
+	if hs := m.hits[m.occs[0].line]; len(hs) != 1 {
+		t.Fatalf("line %q hits %v", ansi.Strip(p.view.Lines[m.occs[0].line]), hs)
 	}
 	// The HTML attribute is not visible: the match gets a gutter mark instead.
-	if !m.marks[m.target[1]] {
-		t.Fatalf("expected a gutter mark on %d, marks %v", m.target[1], m.marks)
+	if !m.marks[m.occs[1].line] {
+		t.Fatalf("expected a gutter mark on %d, marks %v", m.occs[1].line, m.marks)
 	}
 
 	// n from the top goes to each match in turn, then wraps.
@@ -168,7 +151,7 @@ func TestMatchesHighlightAndJump(t *testing.T) {
 		if wrapped, ok := p.JumpMatch(1, i == 0); !ok || wrapped {
 			t.Fatalf("jump %d: ok=%v wrapped=%v", i, ok, wrapped)
 		}
-		if cur, _ := p.MatchPos(); cur != i+1 || !p.visible(m.target[i]) || p.offset > p.maxOffset() {
+		if cur, _ := p.MatchPos(); cur != i+1 || !p.visible(m.occs[i].line) || p.offset > p.maxOffset() {
 			t.Fatalf("jump %d: cur %d offset %d", i, cur, p.offset)
 		}
 	}
@@ -180,11 +163,11 @@ func TestMatchesHighlightAndJump(t *testing.T) {
 	}
 
 	// The current highlight is drawn, and the rest of the line survives.
-	line := p.decorate(m.target[0], p.view.Lines[m.target[0]], newTheme(true, "dark", config.Theme{}))
-	if ansi.Strip(line) != ansi.Strip(p.view.Lines[m.target[0]]) {
-		t.Fatalf("decorate changed the text:\n%q\n%q", ansi.Strip(line), ansi.Strip(p.view.Lines[m.target[0]]))
+	line := p.decorate(m.occs[0].line, p.view.Lines[m.occs[0].line], newTheme(true, "dark", config.Theme{}))
+	if ansi.Strip(line) != ansi.Strip(p.view.Lines[m.occs[0].line]) {
+		t.Fatalf("decorate changed the text:\n%q\n%q", ansi.Strip(line), ansi.Strip(p.view.Lines[m.occs[0].line]))
 	}
-	if !strings.Contains(ansi.Strip(p.decorate(m.target[1], p.view.Lines[m.target[1]], newTheme(true, "dark", config.Theme{}))), "▌") {
+	if !strings.Contains(ansi.Strip(p.decorate(m.occs[1].line, p.view.Lines[m.occs[1].line], newTheme(true, "dark", config.Theme{}))), "▌") {
 		t.Fatal("gutter mark not drawn")
 	}
 }
@@ -202,8 +185,8 @@ func TestMatchJumpsScrollOnlyWhenNeeded(t *testing.T) {
 	p := testPane(t, sb.String())
 	setTestMatches(p, "needle", []int{0, 2, 40, 58}, []string{"needle"})
 	m := p.match
-	if len(m.target) != 4 {
-		t.Fatalf("targets %v", m.target)
+	if len(m.occs) != 4 {
+		t.Fatalf("occurrences %v", m.occs)
 	}
 
 	// A new search with matches in view highlights the uppermost, in place.
@@ -218,45 +201,45 @@ func TestMatchJumpsScrollOnlyWhenNeeded(t *testing.T) {
 	}
 	// n to a match out of view puts it at the top.
 	p.JumpMatch(1, false)
-	if p.match.cur != 2 || p.offset != m.target[2] {
+	if p.match.cur != 2 || p.offset != m.occs[2].line {
 		t.Fatalf("n out of view: cur %d offset %d", p.match.cur, p.offset)
 	}
 	// The last match can't reach the top: the view stops at the end.
 	p.JumpMatch(1, false)
-	if p.match.cur != 3 || p.offset != p.maxOffset() || !p.visible(m.target[3]) {
+	if p.match.cur != 3 || p.offset != p.maxOffset() || !p.visible(m.occs[3].line) {
 		t.Fatalf("n at the end: cur %d offset %d max %d", p.match.cur, p.offset, p.maxOffset())
 	}
 	// Wrapping counts from the current match, not the top of the view.
-	if wrapped, _ := p.JumpMatch(1, false); !wrapped || p.match.cur != 0 || p.offset != m.target[0] {
+	if wrapped, _ := p.JumpMatch(1, false); !wrapped || p.match.cur != 0 || p.offset != m.occs[0].line {
 		t.Fatalf("wrap: cur %d offset %d", p.match.cur, p.offset)
 	}
 	if wrapped, _ := p.JumpMatch(-1, false); !wrapped || p.match.cur != 3 || p.offset != p.maxOffset() {
 		t.Fatalf("N wrap: cur %d offset %d", p.match.cur, p.offset)
 	}
 	// Once the current match is scrolled out of view, n counts from the top.
-	p.ScrollTo(m.target[1] + 1)
+	p.ScrollTo(m.occs[1].line + 1)
 	p.JumpMatch(1, false)
 	if p.match.cur != 2 {
 		t.Fatalf("n after scrolling away: cur %d", p.match.cur)
 	}
 	// A new search below the view scrolls to the first match below the top.
-	p.ScrollTo(m.target[1] + 1)
+	p.ScrollTo(m.occs[1].line + 1)
 	p.match.cur = -1
 	p.JumpMatch(1, true)
-	if p.match.cur != 2 || p.offset != m.target[2] {
+	if p.match.cur != 2 || p.offset != m.occs[2].line {
 		t.Fatalf("new search out of view: cur %d offset %d", p.match.cur, p.offset)
 	}
 	// A counted jump steps from the current match.
 	p.JumpMatch(-2, false)
-	if p.match.cur != 0 || p.offset != m.target[0] {
+	if p.match.cur != 0 || p.offset != m.occs[0].line {
 		t.Fatalf("2N: cur %d offset %d", p.match.cur, p.offset)
 	}
 	// Opening a result in view doesn't scroll; one out of view is capped.
-	p.GotoMatchLine(2)
-	if p.match.cur != 1 || p.offset != m.target[0] {
+	p.GotoMatch(2, 0)
+	if p.match.cur != 1 || p.offset != m.occs[0].line {
 		t.Fatalf("result in view: cur %d offset %d", p.match.cur, p.offset)
 	}
-	p.GotoMatchLine(58)
+	p.GotoMatch(58, 0)
 	if p.match.cur != 3 || p.offset != p.maxOffset() {
 		t.Fatalf("result at the end: cur %d offset %d", p.match.cur, p.offset)
 	}
@@ -270,14 +253,14 @@ func TestMatchesPhraseAcrossWrap(t *testing.T) {
 	req := search.Request{Query: "one fixed string", Mode: search.Mode{Literal: true}}
 	p.setMatches(newMatches(req, []search.Match{{Line: 1, Text: strings.TrimSpace(src), Spans: [][2]int{{50, 70}}}}))
 	m := p.match
-	if len(m.target) != 1 || len(m.marks) != 0 {
-		t.Fatalf("targets %v marks %v", m.target, m.marks)
+	if len(m.occs) != 1 || len(m.marks) != 0 {
+		t.Fatalf("occurrences %v marks %v", m.occs, m.marks)
 	}
-	start := m.target[0]
+	start := m.occs[0].line
 	var text []string
 	for _, r := range []int{start, start + 1} {
 		hs := m.hits[r]
-		if len(hs) != 1 || hs[0].from != start {
+		if len(hs) != 1 || hs[0].occ != 0 {
 			t.Fatalf("line %d hits %v", r, hs)
 		}
 		text = append(text, ansi.Cut(ansi.Strip(p.view.Lines[r]), hs[0].start, hs[0].end))
@@ -303,5 +286,59 @@ func TestHighlightSpansOverlap(t *testing.T) {
 	want := th.bar.Render("a") + th.match.Render("bcd") + th.bar.Render("") + th.match.Render("ef") + th.bar.Render("gh")
 	if got != want {
 		t.Fatalf("got %q\nwant %q", got, want)
+	}
+}
+
+// Each occurrence is a match of its own: n steps through the two on one line,
+// only the current one takes the strong colour, and a result opens its own.
+func TestMatchesStepThroughOccurrences(t *testing.T) {
+	src := "one needle and nonneedle\n\ntwo needle\n"
+	p := testPane(t, src)
+	req := search.Request{Query: "needle"}
+	p.setMatches(newMatches(req, []search.Match{
+		{Line: 1, Text: "one needle and nonneedle", Spans: [][2]int{{4, 10}, {18, 24}}},
+		{Line: 3, Text: "two needle", Spans: [][2]int{{4, 10}}},
+	}))
+	m := p.match
+	if _, total := p.MatchPos(); total != 3 {
+		t.Fatalf("occurrences %v", m.occs)
+	}
+	want := []occurrence{{line: m.occs[0].line, col: m.occs[0].col, src: 0, nth: 0}, {src: 0, nth: 1}, {src: 2, nth: 0}}
+	for i, o := range m.occs {
+		if o.src != want[i].src || o.nth != want[i].nth {
+			t.Fatalf("occurrence %d: %+v", i, o)
+		}
+	}
+	if m.occs[0].line != m.occs[1].line || m.occs[0].col >= m.occs[1].col {
+		t.Fatalf("both on one line, in order: %v", m.occs)
+	}
+
+	th := newTheme(true, "dark", config.Theme{})
+	r := m.occs[0].line
+	p.JumpMatch(1, true)
+	p.JumpMatch(1, false)
+	if cur, _ := p.MatchPos(); cur != 2 {
+		t.Fatalf("n should reach the second on the line, cur %d", cur)
+	}
+	line := p.decorate(r, p.view.Lines[r], th)
+	hs := m.hits[r]
+	if len(hs) != 2 {
+		t.Fatalf("hits %v", hs)
+	}
+	first, second := ansi.Cut(line, hs[0].start, hs[0].end), ansi.Cut(line, hs[1].start, hs[1].end)
+	if strings.Contains(first, th.matchCur.Render(ansi.Strip(first))) || !strings.Contains(second, th.matchCur.Render(ansi.Strip(second))) {
+		t.Fatalf("only the second should be current:\n%q\n%q", first, second)
+	}
+	if src, nth, _ := p.CurrentMatch(); src != 0 || nth != 1 {
+		t.Fatalf("current match %d/%d", src, nth)
+	}
+
+	p.GotoMatch(0, 1)
+	if p.match.cur != 1 {
+		t.Fatalf("result 0/1: cur %d", p.match.cur)
+	}
+	p.GotoMatch(2, 0)
+	if p.match.cur != 2 {
+		t.Fatalf("result 2/0: cur %d", p.match.cur)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/joe-salamy/joe-md/internal/search"
 
@@ -12,33 +13,68 @@ import (
 
 const resultsMaxRows = 10
 
-// Results is the search results panel, a list like vim's quickfix window.
+// Results is the search results panel, a list like vim's quickfix window. It
+// has a row for each occurrence: a line with two matches is two rows.
 type Results struct {
 	list
-	req search.Request
-	res search.Result
+	req  search.Request
+	res  search.Result
+	rows []resultRow
 }
+
+// resultRow is the nth match on line res.Matches[match].
+type resultRow struct{ match, nth int }
+
+func newResults(req search.Request, res search.Result) *Results {
+	r := &Results{req: req, res: res}
+	for i, m := range res.Matches {
+		for n := range max(len(m.Spans), 1) {
+			r.rows = append(r.rows, resultRow{i, n})
+		}
+	}
+	return r
+}
+
+// Len is the number of results, one per occurrence.
+func (r *Results) Len() int { return len(r.rows) }
 
 // Height is the panel height on a screen of the given height, including the
 // title row.
 func (r *Results) Height(screen int) int {
-	return min(len(r.res.Matches), resultsMaxRows, max(screen/3, 1)) + 1
+	return min(len(r.rows), resultsMaxRows, max(screen/3, 1)) + 1
 }
 
 // Select moves the cursor to row i and scrolls it into a panel of rows rows.
-func (r *Results) Select(i, rows int) { r.selectIdx(i, len(r.res.Matches), rows) }
+func (r *Results) Select(i, rows int) { r.selectIdx(i, len(r.rows), rows) }
 
-func (r *Results) Scroll(n, rows int) { r.scroll(n, len(r.res.Matches), rows) }
+func (r *Results) Scroll(n, rows int) { r.scroll(n, len(r.rows), rows) }
 
-func (r *Results) Current() search.Match { return r.res.Matches[r.cursor] }
+// Current is the selected result: its line, and which match on it.
+func (r *Results) Current() (search.Match, int) {
+	row := r.rows[r.cursor]
+	return r.res.Matches[row.match], row.nth
+}
 
 // At returns the result shown at row y of the panel, or -1.
 func (r *Results) At(y int) int {
 	i := r.offset + y - 1
-	if y < 1 || i >= len(r.res.Matches) {
+	if y < 1 || i >= len(r.rows) {
 		return -1
 	}
 	return i
+}
+
+// Find returns the row of the nth match on line (1-based) of path, or of the
+// line's last match if it has fewer, or -1.
+func (r *Results) Find(path string, line, nth int) int {
+	found := -1
+	for i, row := range r.rows {
+		m := r.res.Matches[row.match]
+		if m.Path == path && m.Line == line && (found < 0 || row.nth <= nth) {
+			found = i
+		}
+	}
+	return found
 }
 
 // InFile returns the matches in path.
@@ -54,7 +90,7 @@ func (r *Results) InFile(path string) []search.Match {
 
 func (r *Results) Render(width, height int, focused bool, th theme) []string {
 	out := make([]string, 0, height)
-	n, files := len(r.res.Matches), r.res.Files
+	n, files := len(r.rows), r.res.Files
 	title := " " + plural(n, "match", "matches") + " in " + plural(files, "file", "files")
 	if r.res.Truncated {
 		title += " (limit reached)"
@@ -63,28 +99,40 @@ func (r *Results) Render(width, height int, focused bool, th theme) []string {
 	title = th.separator.Render("─") + th.resultsTitle.Render(ansi.Truncate(title, width-2, "…"))
 	out = append(out, fit(title+th.separator.Render(strings.Repeat("─", max(0, width-ansi.StringWidth(title)))), width))
 
-	locW := 0
+	// The line numbers always show; long paths lose their end instead.
+	pathW, lineW := 0, 0
 	for i := r.offset; i < n && i < r.offset+height-1; i++ {
-		locW = max(locW, ansi.StringWidth(r.location(i)))
+		path, line := r.location(i)
+		pathW, lineW = max(pathW, ansi.StringWidth(path)), max(lineW, len(line))
 	}
-	locW = min(locW, max(width/3, 8))
+	pathW = min(pathW, max(width/3-lineW, 8))
 	for i := r.offset; i < n && len(out) < height; i++ {
-		loc := ansi.Truncate(r.location(i), locW, "…")
-		pad := strings.Repeat(" ", locW-ansi.StringWidth(loc))
-		text, spans := trimMatch(r.res.Matches[i])
+		path, line := r.location(i)
+		path = ansi.Truncate(path, pathW, "…")
+		var loc string
+		if path == "" { // a file search: line numbers right-aligned
+			loc = strings.Repeat(" ", lineW-len(line)) + line
+		} else {
+			loc = path + line + strings.Repeat(" ", pathW-ansi.StringWidth(path)+lineW-len(line))
+		}
+		row := r.rows[i]
+		text, spans := trimMatch(r.res.Matches[row.match])
+		var span [][2]int
+		if row.nth < len(spans) {
+			span = spans[row.nth : row.nth+1]
+		}
+		text, span = scrollTo(text, span, width-ansi.StringWidth(loc)-3)
 		if i == r.cursor {
-			row := " " + loc + pad + "  " + text
 			style := th.tocCurrent
 			if focused {
 				style = th.tocCursor
 			}
-			out = append(out, style.Render(fit(ansi.Truncate(row, width, ""), width)))
+			out = append(out, style.Render(fit(ansi.Truncate(" "+loc+"  "+text, width, ""), width)))
 			continue
 		}
-		path, line, _ := strings.Cut(loc, ":")
-		row := " " + th.resultsPath.Render(path) + th.resultsLine.Render(":"+line) + pad + "  " +
-			highlightSpans(text, spans, th)
-		out = append(out, fit(row, width))
+		row2 := " " + th.resultsPath.Render(path) + th.resultsLine.Render(loc[len(path):]) + "  " +
+			highlightSpans(text, span, th)
+		out = append(out, fit(row2, width))
 	}
 	for len(out) < height {
 		out = append(out, strings.Repeat(" ", width))
@@ -92,10 +140,39 @@ func (r *Results) Render(width, height int, focused bool, th theme) []string {
 	return out
 }
 
-// location is "path:line", the path relative to the search root.
-func (r *Results) location(i int) string {
-	m := r.res.Matches[i]
-	return relPath(r.req, m.Path) + ":" + strconv.Itoa(m.Line)
+// location is row i's path, relative to the search root, and ":line". A file
+// search has one file, named in the title, so only the line shows.
+func (r *Results) location(i int) (path, line string) {
+	m := r.res.Matches[r.rows[i].match]
+	if r.req.Scope == search.File {
+		return "", strconv.Itoa(m.Line)
+	}
+	return relPath(r.req, m.Path), ":" + strconv.Itoa(m.Line)
+}
+
+// scrollTo drops the start of text, behind "…", if the first of spans would
+// end past w cells, keeping a little of the text before it.
+func scrollTo(text string, spans [][2]int, w int) (string, [][2]int) {
+	if len(spans) == 0 || w <= 0 || ansi.StringWidth(text[:spans[0][1]]) <= w {
+		return text, spans
+	}
+	cut := spans[0][0]
+	for range w / 4 {
+		if cut == 0 {
+			break
+		}
+		_, size := utf8.DecodeLastRuneInString(text[:cut])
+		cut -= size
+	}
+	const ellipsis = "…"
+	shift := len(ellipsis) - cut
+	out := make([][2]int, 0, len(spans))
+	for _, s := range spans {
+		if s[1] > cut {
+			out = append(out, [2]int{max(s[0], cut) + shift, s[1] + shift})
+		}
+	}
+	return ellipsis + text[cut:], out
 }
 
 func relPath(req search.Request, path string) string {
