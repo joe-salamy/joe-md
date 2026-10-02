@@ -293,6 +293,20 @@ func (a *App) syncResults() {
 // and no pane highlights matches any more. Killed means killed: bumping the
 // sequence drops a search that is still computing, so its matches can never
 // land after the highlights are gone.
+// searchActive reports whether there is a search for killSearch to kill: one
+// running, a results list, or highlights in any pane.
+func (a *App) searchActive() bool {
+	if a.cancel != nil || a.results != nil {
+		return true
+	}
+	for _, p := range a.allPanes() {
+		if p.match != nil {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *App) killSearch() {
 	if a.cancel != nil {
 		a.cancel()

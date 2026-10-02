@@ -312,6 +312,25 @@ func TestMouseClearsMessage(t *testing.T) {
 	}
 }
 
+func TestQKillsSearchFirst(t *testing.T) {
+	dir := fixture(t)
+	path := filepath.Join(dir, "a.md")
+	a := newTestApp(t, path)
+	p, req := a.pane, search.Request{Query: "text", Scope: search.File, Root: path}
+	res := search.Result{Matches: []search.Match{{Path: path, Line: 3, Text: "text", Spans: [][2]int{{0, 4}}}}}
+	a.seq++
+	a.update(searchDoneMsg{seq: a.seq, pane: p, req: req, res: res, pre: indexed(req, res.Matches, p.doc, p.view)})
+	if cmd := press(a, "q"); cmd != nil {
+		t.Fatal("q with a search should not quit")
+	}
+	if a.pane.match != nil || a.results != nil {
+		t.Fatal("q should kill the search")
+	}
+	if cmd := press(a, "q"); cmd == nil {
+		t.Fatal("q without a search should quit on the last pane")
+	}
+}
+
 func TestEscKillsSearch(t *testing.T) {
 	dir := fixture(t)
 	path := filepath.Join(dir, "a.md")

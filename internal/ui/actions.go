@@ -196,7 +196,7 @@ func init() {
 			run: docOnly(func(a *App, c call) { a.stepResult(-c.n) })},
 		&action{name: "clear_search", desc: "kill the search: no more highlights or results", keys: keys("esc"),
 			run: do(func(a *App, c call) { a.killSearch() })},
-		&action{name: "toggle_search_bar", desc: "show / hide the search bar", keys: keys("ctrl+s"),
+		&action{name: "toggle_search_bar", desc: "show / hide the search bar", keys: keys("alt+s"),
 			run: do(func(a *App, c call) { a.showBar = !a.showBar; a.layout() })},
 	)
 	add(ctxSearch, "Search bar",
@@ -380,8 +380,12 @@ func init() {
 	)
 
 	add(ctxNormal, "Quitting",
-		&action{name: "quit", desc: "close the pane, then the tab, then quit", keys: keys("q"),
+		&action{name: "quit", desc: "kill the search if there is one, else close the pane, then the tab, then quit", keys: keys("q"),
 			run: func(a *App, c call) tea.Cmd {
+				if a.searchActive() {
+					a.killSearch()
+					return nil
+				}
 				if !a.closePane() {
 					return tea.Quit
 				}

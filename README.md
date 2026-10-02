@@ -137,12 +137,12 @@ one page, and `f1` (or `g?`) shows them inside joe-md, as currently bound:
 | `]q` `[q`                    | open next / previous search result  |
 | `gr`                         | open / close the results list       |
 | `esc`                        | kill the search: no more highlights or results |
-| `ctrl+s`                     | show / hide the search bar          |
+| `alt+s`                      | show / hide the search bar          |
 | `tab` `shift+tab`            | cycle focus: sidebar, each pane, results |
 | `ctrl+g`                     | show the file's full path           |
 | `yn` `yp`                     | copy the file's name / full path to the clipboard |
 | `o`                          | open the file menu                  |
-| `q`                          | close the pane, else the tab; quits on the last one (the only way) |
+| `q`                          | kill the search if there is one; else close the pane, else the tab; quits on the last one (the only way) |
 | `Q` `ctrl+c`                 | quit                                |
 
 ### Tabs
