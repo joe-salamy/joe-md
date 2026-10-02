@@ -82,7 +82,7 @@ scope = "dir"           # where ? starts: file, dir or repo
 literal = false         # one phrase of plain text, not regexes
 case = "smart"          # ignore (rg -i), smart (rg -S) or sensitive
 
-[theme]                 # ANSI 0-255 or "#rrggbb"; see -dump-config for all
+[theme]                 # ANSI 0-255, "#rgb" or "#rrggbb"; see -dump-config for all
 accent = "#7aa2f7"
 match = "186"
 

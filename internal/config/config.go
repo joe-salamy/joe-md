@@ -135,7 +135,7 @@ func (c *Config) check() error {
 	}
 	for name, v := range c.Theme.Colors() {
 		if v != "" && !colorRE.MatchString(v) {
-			return fmt.Errorf("theme.%s %q: must be an ANSI colour 0-255 or #rrggbb", name, v)
+			return fmt.Errorf("theme.%s %q: must be an ANSI colour 0-255, #rgb or #rrggbb", name, v)
 		}
 	}
 	return nil
@@ -190,9 +190,9 @@ func Template(bindings []Binding) string {
 		"# Letter case: ignore (rg -i), smart (rg -S: sensitive if the query has capitals) or sensitive.\n# case = %q\n\n",
 		d.Search.Scope, d.Search.Literal, d.Search.Case)
 	b.WriteString(`[theme]
-# ANSI colours (0-255) or "#rrggbb". Unset colours follow the style: dracula,
-# tokyo-night and pink have matching UI colours; the others suit the
-# terminal's background. The values shown are the dark ones.
+# ANSI colours (0-255), "#rgb" or "#rrggbb". Unset colours follow the
+# style: dracula, tokyo-night and pink have matching UI colours; the others
+# suit the terminal's background. The values shown are the dark ones.
 # accent = "39"         # focus, cursor, prompts, headings in the menu
 # text = "252"          # ordinary UI text
 # subtle = "248"        # third-level headings in the sidebar

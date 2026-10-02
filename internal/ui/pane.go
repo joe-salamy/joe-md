@@ -82,6 +82,9 @@ func (p *Pane) Reload(r *doc.Renderer, maxWrap int) (changed bool, err error) {
 	}
 	anchor := p.TopSource()
 	p.doc, p.view = d, nil // never a view of the old text over the new
+	if p.width == 0 {
+		return true, nil // never laid out: Layout renders it when it is shown
+	}
 	return true, p.render(r, min(p.width, maxWrap), anchor)
 }
 
@@ -92,6 +95,9 @@ func (p *Pane) TopSource() int {
 	}
 	return p.view.RenderedToSource(p.doc, p.offset)
 }
+
+// GotoLine is GotoSource for 1-based line n, clamped to the document.
+func (p *Pane) GotoLine(n int) { p.GotoSource(min(n, p.doc.Lines) - 1) }
 
 func (p *Pane) GotoSource(src int) {
 	if p.view == nil {

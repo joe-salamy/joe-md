@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -41,8 +42,12 @@ type Doc struct {
 	Lines    int // number of source lines
 	Blocks   []Block
 	Headings []Heading
-	refs     string // link reference definitions, appended to every block
+	renders  []string // the markdown handed to glamour for each block
 }
+
+// ref is a link reference definition: its label, normalised as normLabel
+// does, and its source text.
+type ref struct{ label, text string }
 
 // ErrBinary is Load's error for a file that isn't text.
 var ErrBinary = errors.New("not a text file")
@@ -94,14 +99,14 @@ func Parse(src []byte) *Doc {
 	root := md.Parser().Parse(text.NewReader(src))
 
 	// Collect block start lines. Link reference definitions render to
-	// nothing, so they are not blocks of their own; they are appended to every
-	// block instead so reference-style links still resolve.
+	// nothing, so they are not blocks of their own; they are appended to the
+	// blocks that use them instead so reference-style links still resolve.
 	type start struct {
 		line int
 		node ast.Node
 	}
 	var starts []start
-	var refs []string
+	var refs []ref
 	refLine := map[int]bool{}
 	for n := root.FirstChild(); n != nil; n = n.NextSibling() {
 		if n.Pos() < 0 {
@@ -113,7 +118,8 @@ func Parse(src []byte) *Doc {
 			if nx := n.NextSibling(); nx != nil && nx.Pos() >= 0 {
 				end = lineOf(nx.Pos())
 			}
-			refs = append(refs, joinLines(lines, l, end))
+			label := normLabel(string(n.(*ast.LinkReferenceDefinition).Label))
+			refs = append(refs, ref{label, joinLines(lines, l, end)})
 			for i := l; i < end; i++ {
 				refLine[i] = true
 			}
@@ -124,7 +130,6 @@ func Parse(src []byte) *Doc {
 		}
 		starts = append(starts, start{l, n})
 	}
-	d.refs = strings.Join(refs, "\n")
 
 	for i, s := range starts {
 		b := Block{SrcStart: s.line, Next: d.Lines, Heading: -1}
@@ -148,32 +153,67 @@ func Parse(src []byte) *Doc {
 			})
 		}
 		d.Blocks = append(d.Blocks, b)
+		d.renders = append(d.renders, withRefs(b.Text, refs))
 	}
 	return d
 }
 
 // renderText is the markdown handed to glamour for block i.
 func (d *Doc) renderText(i int) string {
-	if d.refs == "" {
-		return d.Blocks[i].Text
+	if i < len(d.renders) {
+		return d.renders[i]
 	}
-	return d.Blocks[i].Text + "\n\n" + d.refs + "\n"
+	return d.Blocks[i].Text
+}
+
+// withRefs appends to a block's text the link reference definitions it
+// uses, unless it holds them already (the definitions after a block are in
+// its text). Leaving out the rest keeps a block's text, and so its place in
+// the render cache, the same when an unrelated definition changes.
+func withRefs(text string, refs []ref) string {
+	norm := normLabel(text)
+	var used []string
+	for _, r := range refs {
+		if strings.Contains(norm, "["+r.label+"]") && !strings.Contains(text, r.text) {
+			used = append(used, strings.TrimSuffix(r.text, "\n"))
+		}
+	}
+	if len(used) == 0 {
+		return text
+	}
+	return text + "\n\n" + strings.Join(used, "\n") + "\n"
+}
+
+var bracketSpace = strings.NewReplacer("[ ", "[", " ]", "]")
+
+// normLabel matches link labels as CommonMark does, near enough: ignoring
+// case and runs of whitespace, including any just inside the brackets.
+func normLabel(s string) string {
+	return bracketSpace.Replace(strings.ToLower(strings.Join(strings.Fields(s), " ")))
 }
 
 func joinLines(lines [][]byte, from, to int) string {
 	return string(bytes.Join(lines[from:to], []byte("\n"))) + "\n"
 }
 
+// yamlKey is the first line of front matter: a YAML key, or a comment.
+var yamlKey = regexp.MustCompile(`^(#|[A-Za-z0-9_][\w.-]*[ \t]*:([ \t]|$))`)
+
 // blankFrontMatter replaces a leading YAML front matter block with empty lines,
-// hiding it from the renderer while keeping line numbers intact.
+// hiding it from the renderer while keeping line numbers intact. The line
+// after the opening --- must start the YAML, so a document that merely opens
+// with a thematic break keeps its text.
 func blankFrontMatter(src []byte) []byte {
 	if !bytes.HasPrefix(src, []byte("---\n")) && !bytes.HasPrefix(src, []byte("---\r\n")) {
 		return src
 	}
 	lines := bytes.SplitAfter(src, []byte("\n"))
+	if len(lines) < 2 || !yamlKey.Match(bytes.TrimRight(lines[1], "\r\n")) &&
+		!isFence(lines[1]) {
+		return src
+	}
 	for i := 1; i < len(lines); i++ {
-		t := bytes.TrimRight(lines[i], "\r\n")
-		if bytes.Equal(t, []byte("---")) || bytes.Equal(t, []byte("...")) {
+		if isFence(lines[i]) {
 			out := make([]byte, 0, len(src))
 			for j := 0; j <= i; j++ {
 				out = append(out, '\n')
@@ -185,6 +225,11 @@ func blankFrontMatter(src []byte) []byte {
 		}
 	}
 	return src
+}
+
+func isFence(l []byte) bool {
+	t := bytes.TrimRight(l, "\r\n")
+	return bytes.Equal(t, []byte("---")) || bytes.Equal(t, []byte("..."))
 }
 
 func inlineText(n ast.Node, src []byte) string {

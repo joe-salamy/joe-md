@@ -74,6 +74,9 @@ type App struct {
 	msg     string // one-shot status message
 	help    *Help  // the help overlay, nil when closed; see help.go
 
+	helpCache  []string // the help's text, laid out helpCacheW wide
+	helpCacheW int
+
 	// Search bar and results; see search.go.
 	input       textinput.Model
 	typing      bool         // the search bar has the keyboard
@@ -91,8 +94,8 @@ type App struct {
 	showResults bool
 }
 
-// New opens one tab per document. With none, or with opts.MenuDir set, it
-// starts with the file menu open.
+// New opens one tab per document, skipping any file given twice. With none,
+// or with opts.MenuDir set, it starts with the file menu open.
 func New(docs []*doc.Doc, opts Options) *App {
 	a := &App{
 		opts:       opts,
@@ -111,7 +114,9 @@ func New(docs []*doc.Doc, opts Options) *App {
 	}
 	a.setPlaceholder()
 	for _, d := range docs {
-		a.tabs = append(a.tabs, newTab(NewPane(d)))
+		if a.tabOf(d.Path) < 0 {
+			a.tabs = append(a.tabs, newTab(NewPane(d)))
+		}
 	}
 	a.activate(0)
 	if opts.MenuDir != "" || len(docs) == 0 {
@@ -185,12 +190,26 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	snap := a.scrollSnapshot()
 	cmd := a.update(msg)
 	a.scrollBind(snap)
+	a.fitInputs()
 	// The sidebar follows the document, except that the wheel may scroll it
 	// away from the current heading; wheel syncs it when it scrolls a pane.
 	if _, ok := msg.(tea.MouseWheelMsg); !ok {
 		a.syncTOC()
 	}
 	return a, cmd
+}
+
+// fitInputs sizes what View draws to the state Update left: the search and
+// filter inputs to their room, and the help's scroll to its text, which a
+// resize may have shortened. View itself changes nothing.
+func (a *App) fitInputs() {
+	a.input.SetWidth(a.inputWidth())
+	if a.menu != nil {
+		a.menu.filter.SetWidth(a.filterWidth())
+	}
+	if a.help != nil {
+		a.help.scroll(0, len(a.helpLines()), a.helpRows())
+	}
 }
 
 func (a *App) update(msg tea.Msg) tea.Cmd {
@@ -389,7 +408,7 @@ func (a *App) editDone(m editDoneMsg) tea.Cmd {
 	line := m.session.Result()
 	changed, cmd := a.reload()
 	if line != m.session.Line {
-		a.pane.GotoSource(min(line, a.pane.doc.Lines) - 1)
+		a.pane.GotoLine(line)
 	}
 	switch {
 	case m.err != nil:
@@ -430,7 +449,7 @@ func (a *App) reload() (bool, tea.Cmd) {
 
 // gotoSourceLine jumps to 1-based source line n, like vim's :n.
 func (a *App) gotoSourceLine(n int) {
-	a.pane.GotoSource(min(n, a.pane.doc.Lines) - 1)
+	a.pane.GotoLine(n)
 	a.msg = "line " + strconv.Itoa(n)
 }
 

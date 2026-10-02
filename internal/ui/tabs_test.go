@@ -240,3 +240,31 @@ func TestStartupMenu(t *testing.T) {
 		t.Fatal("closing the start-up menu with no tabs should quit")
 	}
 }
+
+// A file given twice at start-up opens once.
+func TestStartupDedupe(t *testing.T) {
+	dir := fixture(t)
+	a := newTestApp(t, filepath.Join(dir, "a.md"), filepath.Join(dir, "b.md"), filepath.Join(dir, "a.md"))
+	if got := tabNames(a); got != "a.md b.md" {
+		t.Errorf("tabs %q", got)
+	}
+}
+
+// A pane that was never laid out reloads without rendering, and renders at
+// its real size once shown.
+func TestReloadUnshownPane(t *testing.T) {
+	dir := fixture(t)
+	path := filepath.Join(dir, "b.md")
+	a := newTestApp(t, filepath.Join(dir, "a.md"), path)
+	p := a.tabs[1].focus.pane
+	if err := os.WriteFile(path, []byte("# changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := p.Reload(a.renderer, 80); !changed || err != nil || p.view != nil {
+		t.Fatalf("changed %v err %v view %v", changed, err, p.view != nil)
+	}
+	a.activate(1)
+	if p.view == nil || p.wrap != 80 || p.doc.Headings[0].Text != "changed" {
+		t.Errorf("after showing: wrap %d", p.wrap)
+	}
+}

@@ -67,10 +67,20 @@ func (r *Results) At(y int) int {
 // Find returns the row of the nth match on line (1-based) of path, or of the
 // line's last match if it has fewer, or -1.
 func (r *Results) Find(path string, line, nth int) int {
+	return nthOnLine(len(r.rows), nth, func(i int) (bool, int) {
+		m := r.res.Matches[r.rows[i].match]
+		return m.Path == path && m.Line == line, r.rows[i].nth
+	})
+}
+
+// nthOnLine finds the nth match on a line among n items: the item that is
+// it, else the line's last before it, else its first, or -1 if the line has
+// none. on reports whether item i is on the line, and which of the line's
+// matches it is.
+func nthOnLine(n, nth int, on func(i int) (bool, int)) int {
 	found := -1
-	for i, row := range r.rows {
-		m := r.res.Matches[row.match]
-		if m.Path == path && m.Line == line && (found < 0 || row.nth <= nth) {
+	for i := range n {
+		if ok, k := on(i); ok && (found < 0 || k <= nth) {
 			found = i
 		}
 	}
@@ -127,7 +137,10 @@ func (r *Results) Render(width, height int, focused bool, th theme) []string {
 			if focused {
 				style = th.tocCursor
 			}
-			out = append(out, style.Render(fit(ansi.Truncate(" "+loc+"  "+text, width, ""), width)))
+			// Padded before styling, not with fit, whose reset would end the
+			// highlight where the text does.
+			l := ansi.Truncate(" "+loc+"  "+text, width, "")
+			out = append(out, style.Render(l+strings.Repeat(" ", max(width-ansi.StringWidth(l), 0))))
 			continue
 		}
 		row2 := " " + th.resultsPath.Render(path) + th.resultsLine.Render(loc[len(path):]) + "  " +
@@ -186,15 +199,14 @@ func relPath(req search.Request, path string) string {
 }
 
 // trimMatch strips leading indentation and tabs from a match's text, shifting
-// its spans to suit.
+// its spans to suit. A span wholly inside the indentation becomes empty
+// rather than going, so the spans still line up with the rows' nth.
 func trimMatch(m search.Match) (string, [][2]int) {
 	text := strings.ReplaceAll(m.Text, "\t", " ") // same byte length, spans still valid
 	cut := len(text) - len(strings.TrimLeft(text, " "))
-	spans := make([][2]int, 0, len(m.Spans))
-	for _, s := range m.Spans {
-		if s[1] > cut {
-			spans = append(spans, [2]int{max(s[0]-cut, 0), s[1] - cut})
-		}
+	spans := make([][2]int, len(m.Spans))
+	for i, s := range m.Spans {
+		spans[i] = [2]int{max(s[0]-cut, 0), max(s[1]-cut, 0)}
 	}
 	return text[cut:], spans
 }

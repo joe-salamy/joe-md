@@ -26,10 +26,15 @@ func (a *App) helpRows() int {
 	return popupRows(h)
 }
 
-// helpLines is the overlay's text at its current width.
+// helpLines is the overlay's text at its current width. The keymap and
+// theme never change, so it is only laid out again when the width does.
 func (a *App) helpLines() []string {
 	_, _, w, _ := a.helpRect()
-	return a.keymap.helpText(max(w-2, 20), a.theme)
+	w = max(w-2, 20)
+	if a.helpCache == nil || a.helpCacheW != w {
+		a.helpCache, a.helpCacheW = a.keymap.helpText(w, a.theme), w
+	}
+	return a.helpCache
 }
 
 // helpText lays out every group of actions: a heading, then one row per
@@ -84,7 +89,6 @@ func (a *App) helpView() []string {
 	_, _, w, h := a.helpRect()
 	rows := a.helpRows()
 	lines := a.helpLines()
-	a.help.scroll(0, len(lines), rows) // clamp after a resize
 	shown := make([]string, rows)
 	copy(shown, lines[min(a.help.offset, len(lines)):])
 	pos := strconv.Itoa(min(a.help.offset+rows, len(lines))) + "/" + strconv.Itoa(len(lines))

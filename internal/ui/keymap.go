@@ -45,19 +45,19 @@ func NewKeymap(changes map[string]map[string][]string) (*Keymap, error) {
 		byName[x.ctx][x.name] = x
 		km.keys[x] = x.keys
 	}
-	for _, name := range sortedKeys(changes) {
-		ctx := keyCtx(name)
+	for _, ctxName := range sortedKeys(changes) {
+		ctx := keyCtx(ctxName)
 		names, ok := byName[ctx]
 		if !ok {
 			return nil, fmt.Errorf("keys.%s: unknown context (have %s)", ctx, strings.Join(contextNames(), ", "))
 		}
-		for _, name := range sortedKeys(changes[name]) {
+		for _, name := range sortedKeys(changes[ctxName]) {
 			x, ok := names[name]
 			if !ok {
 				return nil, fmt.Errorf("keys.%s.%s: unknown action", ctx, name)
 			}
 			var ks []string
-			for _, k := range changes[string(ctx)][name] {
+			for _, k := range changes[ctxName][name] {
 				k, err := normalizeKey(k)
 				if err != nil {
 					return nil, fmt.Errorf("keys.%s.%s: %w", ctx, name, err)

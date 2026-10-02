@@ -334,7 +334,7 @@ func byRarity(ctx context.Context, rg string, req Request, terms []string) []str
 
 // count is how many lines term matches in the scope, or MaxInt on an error.
 func count(ctx context.Context, rg string, req Request, term string) int {
-	out, err := exec.CommandContext(ctx, rg, append(args(req, term, false), "--count", "--no-filename", "--", req.expr(term), req.Root)...).Output()
+	out, err := exec.CommandContext(ctx, rg, append(args(req, false), "--count", "--no-filename", "--", req.expr(term), req.Root)...).Output()
 	var exit *exec.ExitError
 	if err != nil && !(errors.As(err, &exit) && exit.ExitCode() == 1) {
 		return math.MaxInt
@@ -368,8 +368,8 @@ func narrow(ctx context.Context, rg string, req Request, term string, ms []Match
 	return out, err
 }
 
-// args are ripgrep's options for searching term: the root, or stdin.
-func args(req Request, term string, stdin bool) []string {
+// args are ripgrep's options for searching the root, or stdin.
+func args(req Request, stdin bool) []string {
 	out := []string{[...]string{"-i", "-S", "-s"}[req.Case]}
 	switch {
 	case stdin:
@@ -389,7 +389,7 @@ func stream(ctx context.Context, rg string, req Request, term string, stdin io.R
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, rg, append(append(args(req, term, stdin != nil), "--json"), "--", req.expr(term), path)...)
+	cmd := exec.CommandContext(ctx, rg, append(append(args(req, stdin != nil), "--json"), "--", req.expr(term), path)...)
 	cmd.Stdin = stdin
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -416,7 +416,16 @@ func stream(ctx context.Context, rg string, req Request, term string, stdin io.R
 			break
 		}
 	}
+	// A line too long for the scanner ends the loop early. Kill ripgrep
+	// before waiting: it would block writing to a pipe no one reads.
+	scanErr := sc.Err()
+	if scanErr != nil {
+		cancel()
+	}
 	waitErr := cmd.Wait()
+	if scanErr != nil {
+		return fmt.Errorf("reading ripgrep output: %w", scanErr)
+	}
 
 	// Exit 1 means no matches. Exit 2 means an error, but ripgrep keeps going
 	// past unreadable files, so only report it when nothing was found.

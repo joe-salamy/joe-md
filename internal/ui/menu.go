@@ -339,14 +339,9 @@ func (a *App) menuView() []string {
 		lines = append(lines, line)
 	}
 
-	count := strconv.Itoa(len(m.shown))
-	if n := len(m.shown); n > 0 {
-		count = strconv.Itoa(m.cursor+1) + "/" + count
-	}
-	right := th.dim.Render(" " + count + " ")
+	right := th.dim.Render(" " + m.count(m.cursor) + " ")
 	var left string
 	if m.filtering || m.filter.Value() != "" {
-		m.filter.SetWidth(max(inner-ansi.StringWidth(right)-4, 1))
 		left = th.barPrompt.Render(" / ") + m.filter.View()
 	} else if m.err != "" && !empty {
 		left = th.menuErr.Render(" " + m.err)
@@ -360,6 +355,23 @@ func (a *App) menuView() []string {
 			h("open_here") + " here · " + h("open_vsplit") + "/" + h("open_hsplit") + " split · " + h("close") + " close")
 	}
 	return drawBox(th, " "+title+" ", lines, left, right, w, h)
+}
+
+// count is the footer's position: entry i+1 of how many are shown.
+func (m *Menu) count(i int) string {
+	n := strconv.Itoa(len(m.shown))
+	if len(m.shown) == 0 {
+		return n
+	}
+	return strconv.Itoa(i+1) + "/" + n
+}
+
+// filterWidth is the room the filter input has in the footer, beside the
+// widest count it can show.
+func (a *App) filterWidth() int {
+	_, _, w, _ := a.menuRect()
+	widest := " " + a.menu.count(len(a.menu.shown)-1) + " "
+	return max(w-2-ansi.StringWidth(widest)-4, 1)
 }
 
 func (a *App) menuEntry(e entry, cursor, open bool, width int) string {

@@ -138,3 +138,54 @@ func TestLoadRejectsBinary(t *testing.T) {
 		t.Fatalf("err = %v, want ErrBinary", err)
 	}
 }
+
+// A document that opens with a thematic break is not front matter, even
+// with another --- further down.
+func TestLeadingRuleIsNotFrontMatter(t *testing.T) {
+	d := Parse([]byte("---\n\n# Slide one\n\ntext\n\n---\n\n# Slide two\n"))
+	if len(d.Headings) != 2 || d.Headings[0].Text != "Slide one" {
+		t.Errorf("headings: %+v", d.Headings)
+	}
+	for _, src := range []string{"---\ntitle: x\n---\n# H\n", "---\n# comment\n---\n# H\n", "---\n---\n# H\n"} {
+		d := Parse([]byte(src))
+		if len(d.Headings) != 1 || d.Headings[0].Text != "H" || strings.Contains(d.Blocks[0].Text, "---") {
+			t.Errorf("%q: front matter not hidden: %+v %q", src, d.Headings, d.Blocks[0].Text)
+		}
+	}
+}
+
+// Only the blocks that use a link reference definition get it, matched
+// ignoring case and spacing, so other blocks' cached renders survive a
+// change to it.
+func TestRefsOnlyWhereUsed(t *testing.T) {
+	d := Parse([]byte("[some ref]: http://example.com\n\nuses [it][Some  Ref]\n\nplain\n"))
+	if !strings.Contains(d.renderText(0), "http://example.com") {
+		t.Errorf("block using the ref lacks it: %q", d.renderText(0))
+	}
+	if d.renderText(1) != d.Blocks[1].Text {
+		t.Errorf("block not using the ref got it: %q", d.renderText(1))
+	}
+}
+
+// Renders at one width don't evict another's, so panes of different widths
+// share the cache.
+func TestRendererKeepsSeveralWidths(t *testing.T) {
+	r := NewRenderer("notty")
+	d := Parse([]byte(sample))
+	for _, w := range []int{40, 50, 40} {
+		if _, err := r.Render(d, w); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(r.cache[40]) == 0 || len(r.cache[50]) == 0 {
+		t.Errorf("cached widths %v", r.widths)
+	}
+	for w := 60; w < 60+maxWidths; w++ {
+		if _, err := r.Render(d, w); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(r.widths) != maxWidths || len(r.cache) != maxWidths {
+		t.Errorf("cache grew past %d widths: %v", maxWidths, r.widths)
+	}
+}

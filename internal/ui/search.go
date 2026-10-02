@@ -46,19 +46,14 @@ func newInput(dark bool, placeholder string) textinput.Model {
 	return ti
 }
 
-// modeName describes how queries match, for the search bar.
+// modeName describes how queries match, for the search bar. The case is
+// named as the settings file names it.
 func modeName(m search.Mode) string {
 	s := "regex"
 	if m.Literal {
 		s = "literal"
 	}
-	switch m.Case {
-	case search.IgnoreCase:
-		return s + ", ignore case"
-	case search.SmartCase:
-		return s + ", smart case"
-	}
-	return s + ", match case"
+	return s + ", case: " + m.Case.String()
 }
 
 func (a *App) setPlaceholder() {
@@ -387,25 +382,7 @@ func (a *App) panelHeight() int {
 func (a *App) barView() string {
 	th, w := a.theme, a.width
 	if a.typing {
-		prompt := "/"
-		if a.scope != search.File {
-			prompt = "?"
-		}
-		left := th.barPrompt.Render(" " + prompt + " ")
-		var chips strings.Builder
-		for s := search.File; s <= search.Repo; s++ {
-			if s == a.scope {
-				chips.WriteString(th.barChipOn.Render(" " + s.String() + " "))
-			} else {
-				chips.WriteString(th.barChip.Render(" " + s.String() + " "))
-			}
-		}
-		mode := th.barChip.Render(" regex ")
-		if a.mode.Literal {
-			mode = th.barChipOn.Render(" literal ")
-		}
-		right := " " + mode + " " + chips.String() + " "
-		a.input.SetWidth(max(w-ansi.StringWidth(left)-ansi.StringWidth(right)-1, 1))
+		left, right := a.typingBar()
 		line := left + a.input.View()
 		gap := w - ansi.StringWidth(line) - ansi.StringWidth(right)
 		return fit(line+strings.Repeat(" ", max(gap, 0))+right, w)
@@ -432,6 +409,37 @@ func (a *App) barView() string {
 	}
 	return fit(th.barDim.Render(" "+a.hint(ctxNormal, "search_file")+" search file   "+a.hint(ctxNormal, "search_files")+" search "+
 		a.crossScope.String()+"   "+a.hint(ctxNormal, "toggle_search_bar")+" hide bar   "+a.hint(ctxNormal, "help")+" keys"), w)
+}
+
+// typingBar is what flanks the input while typing: the prompt on the left,
+// and the mode and scope chips on the right.
+func (a *App) typingBar() (left, right string) {
+	th := a.theme
+	prompt := "/"
+	if a.scope != search.File {
+		prompt = "?"
+	}
+	left = th.barPrompt.Render(" " + prompt + " ")
+	var chips strings.Builder
+	for s := search.File; s <= search.Repo; s++ {
+		if s == a.scope {
+			chips.WriteString(th.barChipOn.Render(" " + s.String() + " "))
+		} else {
+			chips.WriteString(th.barChip.Render(" " + s.String() + " "))
+		}
+	}
+	mode := th.barChip.Render(" regex ")
+	if a.mode.Literal {
+		mode = th.barChipOn.Render(" literal ")
+	}
+	return left, " " + mode + " " + chips.String() + " "
+}
+
+// inputWidth is the room the search input has between the typing bar's
+// prompt and chips.
+func (a *App) inputWidth() int {
+	left, right := a.typingBar()
+	return max(a.width-ansi.StringWidth(left)-ansi.StringWidth(right)-1, 1)
 }
 
 // crossTotal is the number of matches across all files when the current

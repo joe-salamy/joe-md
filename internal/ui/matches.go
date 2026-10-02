@@ -187,12 +187,7 @@ func (p *Pane) GotoMatch(src, nth int) {
 // one if it was placed, else the line's last before it, else the one nearest
 // where the line renders.
 func (m *matches) find(src, nth int) int {
-	best := -1
-	for i, o := range m.occs {
-		if o.src == src && (best < 0 || o.nth <= nth) {
-			best = i
-		}
-	}
+	best := nthOnLine(len(m.occs), nth, func(i int) (bool, int) { return m.occs[i].src == src, m.occs[i].nth })
 	if best >= 0 {
 		return best
 	}

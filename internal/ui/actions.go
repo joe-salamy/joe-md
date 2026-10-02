@@ -105,14 +105,17 @@ func init() {
 	do := func(f func(a *App, c call)) func(a *App, c call) tea.Cmd {
 		return func(a *App, c call) tea.Cmd { f(a, c); return nil }
 	}
-	docOnly := func(f func(a *App, c call)) func(a *App, c call) tea.Cmd {
+	// docCmd runs f only when a document is open; docOnly is the same for
+	// actions that return no command.
+	docCmd := func(f func(a *App, c call) tea.Cmd) func(a *App, c call) tea.Cmd {
 		return func(a *App, c call) tea.Cmd {
-			if a.pane != nil {
-				f(a, c)
+			if a.pane == nil {
+				return nil
 			}
-			return nil
+			return f(a, c)
 		}
 	}
+	docOnly := func(f func(a *App, c call)) func(a *App, c call) tea.Cmd { return docCmd(do(f)) }
 	add := func(ctx keyCtx, group string, list ...*action) {
 		for _, x := range list {
 			x.ctx, x.group = ctx, group
@@ -156,9 +159,9 @@ func init() {
 	)
 	add(ctxNormal, "File",
 		&action{name: "edit", desc: "edit in micro at the top line", keys: keys("e"),
-			run: func(a *App, c call) tea.Cmd { return a.edit() }},
+			run: docCmd(func(a *App, c call) tea.Cmd { return a.edit() })},
 		&action{name: "reload", desc: "reload from disk", keys: keys("r"),
-			run: func(a *App, c call) tea.Cmd {
+			run: docCmd(func(a *App, c call) tea.Cmd {
 				changed, cmd := a.reload()
 				if changed {
 					a.msg = "reloaded"
@@ -166,23 +169,13 @@ func init() {
 					a.msg = "unchanged"
 				}
 				return cmd
-			}},
+			})},
 		&action{name: "show_path", desc: "show the file's full path", keys: keys("ctrl+g"),
 			run: docOnly(func(a *App, c call) { a.msg = a.pane.doc.Path })},
 		&action{name: "copy_name", desc: "copy the file's name", row: "copy the file's name / full path", keys: keys("y n"),
-			run: func(a *App, c call) tea.Cmd {
-				if a.pane == nil {
-					return nil
-				}
-				return a.copyText(filepath.Base(a.pane.doc.Path))
-			}},
+			run: docCmd(func(a *App, c call) tea.Cmd { return a.copyText(filepath.Base(a.pane.doc.Path)) })},
 		&action{name: "copy_path", desc: "copy the file's full path", row: "copy the file's name / full path", keys: keys("y p"),
-			run: func(a *App, c call) tea.Cmd {
-				if a.pane == nil {
-					return nil
-				}
-				return a.copyText(a.pane.doc.Path)
-			}},
+			run: docCmd(func(a *App, c call) tea.Cmd { return a.copyText(a.pane.doc.Path) })},
 		&action{name: "open_menu", desc: "open the file menu", keys: keys("o"),
 			run: func(a *App, c call) tea.Cmd { return a.menuHere() }},
 	)

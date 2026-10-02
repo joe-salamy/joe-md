@@ -2,6 +2,7 @@ package doc
 
 import (
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -10,17 +11,41 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// Renderer renders documents with glamour at a given width, caching rendered
-// blocks so re-renders (resize, reload) only redo blocks that changed.
+// Renderer renders documents with glamour, caching rendered blocks so
+// re-renders (resize, reload) only redo blocks that changed. It keeps the
+// blocks of the last few widths, so panes of different widths share it
+// without evicting each other.
 type Renderer struct {
-	style string
-	width int
-	mu    sync.Mutex
-	cache map[string][]string
+	style  string
+	mu     sync.Mutex
+	cache  map[int]map[string][]string // width -> block text -> lines
+	widths []int                       // the cached widths, least recently used first
 }
 
+// maxWidths is how many widths the cache holds: enough for a few panes side
+// by side and a resize.
+const maxWidths = 4
+
 func NewRenderer(style string) *Renderer {
-	return &Renderer{style: style, cache: map[string][]string{}}
+	return &Renderer{style: style, cache: map[int]map[string][]string{}}
+}
+
+// widthCache returns the cache of blocks rendered at width, making it the
+// most recently used and evicting the least if there are too many. r.mu must
+// be held.
+func (r *Renderer) widthCache(width int) map[string][]string {
+	if i := slices.Index(r.widths, width); i >= 0 {
+		r.widths = append(slices.Delete(r.widths, i, i+1), width)
+		return r.cache[width]
+	}
+	if len(r.widths) == maxWidths {
+		delete(r.cache, r.widths[0])
+		r.widths = r.widths[1:]
+	}
+	c := map[string][]string{}
+	r.cache[width] = c
+	r.widths = append(r.widths, width)
+	return c
 }
 
 func (r *Renderer) newTerm(width int) (*glamour.TermRenderer, error) {
@@ -50,31 +75,30 @@ func (r *Renderer) Render(d *Doc, width int) (*Rendered, error) {
 	if width < 10 {
 		width = 10
 	}
-	r.mu.Lock()
-	if width != r.width {
-		r.width = width
-		r.cache = map[string][]string{}
-	}
+	texts := make([]string, len(d.Blocks))
 	var todo []string
 	seen := map[string]bool{}
+	r.mu.Lock()
+	cache := r.widthCache(width)
 	for i := range d.Blocks {
 		t := d.renderText(i)
-		if _, ok := r.cache[t]; !ok && !seen[t] {
+		texts[i] = t
+		if _, ok := cache[t]; !ok && !seen[t] {
 			seen[t] = true
 			todo = append(todo, t)
 		}
 	}
 	r.mu.Unlock()
 
-	if err := r.renderAll(todo, width); err != nil {
+	if err := r.renderAll(cache, todo, width); err != nil {
 		return nil, err
 	}
 
 	out := &Rendered{Lines: []string{""}, spans: make([]span, len(d.Blocks))}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for i := range d.Blocks {
-		lines := r.cache[d.renderText(i)]
+	for i, t := range texts {
+		lines := cache[t]
 		s := span{RenStart: len(out.Lines)}
 		out.Lines = append(out.Lines, lines...)
 		s.RenEnd = len(out.Lines)
@@ -86,9 +110,12 @@ func (r *Renderer) Render(d *Doc, width int) (*Rendered, error) {
 	return out, nil
 }
 
-// renderAll renders texts into the cache, in parallel for large documents.
+// renderAll renders texts into cache, in parallel for large documents.
 // Each worker owns its own TermRenderer since they are not goroutine-safe.
-func (r *Renderer) renderAll(texts []string, width int) error {
+func (r *Renderer) renderAll(cache map[string][]string, texts []string, width int) error {
+	if len(texts) == 0 {
+		return nil
+	}
 	workers := min(runtime.NumCPU(), len(texts)/16+1)
 	jobs := make(chan string)
 	errs := make(chan error, workers)
@@ -111,7 +138,7 @@ func (r *Renderer) renderAll(texts []string, width int) error {
 				}
 				lines := trimBlank(strings.Split(s, "\n"))
 				r.mu.Lock()
-				r.cache[t] = lines
+				cache[t] = lines
 				r.mu.Unlock()
 			}
 		}()

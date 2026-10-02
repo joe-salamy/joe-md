@@ -55,12 +55,7 @@ func (a *App) tabOf(path string) int {
 	if t := a.tab(); t != nil && t.leafOf(path) != nil {
 		return a.cur
 	}
-	for i, t := range a.tabs {
-		if t.leafOf(path) != nil {
-			return i
-		}
-	}
-	return -1
+	return slices.IndexFunc(a.tabs, func(t *Tab) bool { return t.leafOf(path) != nil })
 }
 
 // switchTo shows the pane displaying path, in whichever tab it is.

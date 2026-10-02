@@ -56,3 +56,24 @@ func TestScrollTo(t *testing.T) {
 		t.Fatalf("in view: %q", got)
 	}
 }
+
+// The selected row is highlighted all the way across, not just under its
+// text.
+func TestResultsCursorRowFullWidth(t *testing.T) {
+	res := search.Result{Files: 1, Matches: []search.Match{{Path: "/n/a.md", Line: 1, Text: "foo", Spans: [][2]int{{0, 3}}}}}
+	th := newTheme(true, "dark", config.Theme{})
+	r := newResults(search.Request{Query: "foo", Scope: search.File, Root: "/n/a.md"}, res)
+	row := r.Render(40, 2, true, th)[1]
+	if ansi.StringWidth(row) != 40 || strings.Contains(row, "\x1b[0m ") {
+		t.Errorf("highlight stops early: %q", row)
+	}
+}
+
+// A match inside the indentation trimMatch strips keeps its place, so each
+// row still highlights its own match.
+func TestTrimMatchKeepsSpanOrder(t *testing.T) {
+	text, spans := trimMatch(search.Match{Text: "    foo", Spans: [][2]int{{0, 2}, {4, 7}}})
+	if text != "foo" || len(spans) != 2 || spans[0] != [2]int{0, 0} || spans[1] != [2]int{0, 3} {
+		t.Errorf("got %q %v", text, spans)
+	}
+}
