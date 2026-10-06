@@ -10,8 +10,8 @@ import (
 // handles (and which works over ssh), and the system's clipboard tool
 // (wl-copy, xclip, xsel, pbcopy) for terminals that ignore OSC 52. Either
 // may fail silently, so the message only says what was copied.
-func (a *App) copyText(s string) tea.Cmd {
-	a.msg = "copied " + s
+func (a *App) copyText(s, label string) tea.Cmd {
+a.msg = "copied " + label
 	return tea.Batch(tea.SetClipboard(s), func() tea.Msg {
 		_ = clipboard.WriteAll(s)
 		return nil
