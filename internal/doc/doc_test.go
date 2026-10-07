@@ -154,6 +154,37 @@ func TestLeadingRuleIsNotFrontMatter(t *testing.T) {
 	}
 }
 
+// Standalone bold lines act as one-below-deepest pseudo-headings; bullets
+// starting with bold stay out.
+func TestStandaloneBoldHeadings(t *testing.T) {
+	d := Parse([]byte("### **Title**\n\n**Overview**\n\n- item\n\n**_Case v. Name_, Court (2024)**\n\n- **Facts**\n  - detail\n"))
+	if len(d.Headings) != 3 {
+		t.Fatalf("headings: %+v", d.Headings)
+	}
+	if d.Headings[0].Level != 3 || d.Headings[0].Text != "Title" {
+		t.Errorf("title: %+v", d.Headings[0])
+	}
+	for _, h := range d.Headings[1:] {
+		if h.Level != 4 {
+			t.Errorf("bold level: %+v", h)
+		}
+	}
+	if d.Headings[1].Text != "Overview" || d.Headings[2].Text != "Case v. Name, Court (2024)" {
+		t.Errorf("texts: %+v", d.Headings)
+	}
+}
+
+func TestNoBoldWhenMixedOrAbsent(t *testing.T) {
+	d := Parse([]byte("**Bold** and plain\n\n- **lead** item\n\nplain\n"))
+	if len(d.Headings) != 0 {
+		t.Errorf("headings: %+v", d.Headings)
+	}
+	d = Parse([]byte("**Only**\n"))
+	if len(d.Headings) != 1 || d.Headings[0].Level != 1 || d.Headings[0].Text != "Only" {
+		t.Errorf("headings: %+v", d.Headings)
+	}
+}
+
 // Only the blocks that use a link reference definition get it, matched
 // ignoring case and spacing, so other blocks' cached renders survive a
 // change to it.

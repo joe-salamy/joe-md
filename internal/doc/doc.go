@@ -131,6 +131,15 @@ func Parse(src []byte) *Doc {
 		starts = append(starts, start{l, n})
 	}
 
+	// Pseudo-heading level for standalone bold lines: one below the deepest
+	// real heading (capped at 6), or 1 when the file has no real headings.
+	boldLevel := 1
+	for _, s := range starts {
+		if h, ok := s.node.(*ast.Heading); ok {
+			boldLevel = max(boldLevel, min(h.Level+1, 6))
+		}
+	}
+
 	for i, s := range starts {
 		b := Block{SrcStart: s.line, Next: d.Lines, Heading: -1}
 		if i == 0 {
@@ -151,11 +160,38 @@ func Parse(src []byte) *Doc {
 				Text:  strings.TrimSpace(inlineText(h, src)),
 				Block: i,
 			})
+		} else if p, ok := s.node.(*ast.Paragraph); ok && isStandaloneBold(p, src) {
+			if text := strings.TrimSpace(inlineText(p, src)); text != "" {
+				b.Heading = len(d.Headings)
+				d.Headings = append(d.Headings, Heading{
+					Level: boldLevel,
+					Text:  text,
+					Block: i,
+				})
+			}
 		}
 		d.Blocks = append(d.Blocks, b)
 		d.renders = append(d.renders, withRefs(b.Text, refs))
 	}
 	return d
+}
+
+// isStandaloneBold reports whether p is a single bold span and nothing else:
+// one level-2 emphasis child, ignoring whitespace-only text. Some note
+// generators use such lines as section headers, so they join the TOC.
+func isStandaloneBold(p *ast.Paragraph, src []byte) bool {
+	found := false
+	for c := p.FirstChild(); c != nil; c = c.NextSibling() {
+		if t, ok := c.(*ast.Text); ok && len(bytes.TrimSpace(t.Segment.Value(src))) == 0 {
+			continue
+		}
+		e, ok := c.(*ast.Emphasis)
+		if !ok || e.Level != 2 || found {
+			return false
+		}
+		found = true
+	}
+	return found
 }
 
 // renderText is the markdown handed to glamour for block i.
