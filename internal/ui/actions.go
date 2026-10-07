@@ -184,6 +184,8 @@ func init() {
 	add(ctxNormal, "Search",
 		&action{name: "search_file", desc: "search this file", keys: keys("/"),
 			run: func(a *App, c call) tea.Cmd { return a.startSearch(search.File) }},
+		&action{name: "search_open", desc: "search the open files", keys: keys("g b"),
+			run: func(a *App, c call) tea.Cmd { return a.startSearch(search.Open) }},
 		&action{name: "search_files", desc: "search the directory or repo", keys: keys("?"),
 			run: func(a *App, c call) tea.Cmd { return a.startSearch(a.crossScope) }},
 		&action{name: "next_match", desc: "next match", row: "next / previous match", keys: keys("n"),
@@ -215,9 +217,9 @@ func init() {
 					a.killSearch()
 				}
 			})},
-		&action{name: "scope_next", desc: "next scope: file → dir → repo", row: "next / previous scope: file → dir → repo", keys: keys("tab"),
+		&action{name: "scope_next", desc: "next scope: file → open → dir → repo", row: "next / previous scope: file → open → dir → repo", keys: keys("tab"),
 			run: do(func(a *App, c call) { a.scope = a.scope.Next(1) })},
-		&action{name: "scope_prev", desc: "previous scope", row: "next / previous scope: file → dir → repo", keys: keys("shift+tab"),
+		&action{name: "scope_prev", desc: "previous scope", row: "next / previous scope: file → open → dir → repo", keys: keys("shift+tab"),
 			run: do(func(a *App, c call) { a.scope = a.scope.Next(-1) })},
 		&action{name: "toggle_literal", desc: "regex / literal text", keys: keys("ctrl+r"),
 			run: do(func(a *App, c call) { a.mode.Literal = !a.mode.Literal; a.setPlaceholder() })},

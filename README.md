@@ -78,7 +78,7 @@ search_bar = false
 tabs = true
 
 [search]
-scope = "dir"           # where ? starts: file, dir or repo
+scope = "dir"           # where ? starts: file, open, dir or repo
 literal = false         # one phrase of plain text, not regexes
 case = "smart"          # ignore (rg -i), smart (rg -S) or sensitive
 
@@ -132,6 +132,7 @@ one page, and `f1` (or `g?`) shows them inside joe-md, as currently bound:
 | `e`                          | edit in micro at the top line       |
 | `r`                          | reload the file from disk           |
 | `/`                          | search this file                    |
+| `g b`                        | search the open files               |
 | `?`                          | search across files (last used scope, repo at first) |
 | `n` `N`                      | next / previous match               |
 | `]q` `[q`                    | open next / previous search result  |
@@ -259,7 +260,7 @@ rendered text happens in the background too.
 | Key in the search bar        | Action                              |
 |------------------------------|-------------------------------------|
 | `enter`                      | search (empty repeats the last search) |
-| `tab` `shift+tab`            | cycle scope: file → dir → repo      |
+| `tab` `shift+tab`            | cycle scope: file → open → dir → repo |
 | `ctrl+r`                     | regex / literal text                |
 | `ctrl+c`                     | clear the input (again to cancel)   |
 | `esc`                        | cancel and kill the search          |
@@ -269,13 +270,14 @@ rendered text happens in the background too.
 | `alt+b` `alt+f`              | word left / right                   |
 | `↑` `↓`                      | previous / next search in history   |
 
-Scopes: **file** is the open file; **dir** is its directory, recursively;
+Scopes: **file** is the open file; **open** is every open file, in tab order
+(`g b` starts one directly); **dir** is its directory, recursively;
 **repo** is the enclosing git repository (the nearest `.git`), or the directory
 outside one. Directory scopes search markdown files only and respect
 `.gitignore`.
 
 A **file** search works like vim's `/`: it jumps to the first match below the
-view and `n` / `N` step through the rest. A **dir** or **repo** search opens a
+view and `n` / `N` step through the rest. An **open**, **dir** or **repo** search opens a
 results list (`j` `k` to move, `enter` to open in a tab, `O` to open in the
 focused pane, `v` / `s` to open in a split, `q` or `esc` to close, killing the
 search either way). `]q` / `[q` step through results in the focused pane, like

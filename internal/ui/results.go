@@ -105,7 +105,7 @@ func (r *Results) Render(width, height int, focused bool, th theme) []string {
 	if r.res.Truncated {
 		title += " (limit reached)"
 	}
-	title += " · " + r.req.Scope.String() + " " + tildePath(r.req.Root) + " "
+	title += " · " + r.req.Scope.String() + " " + openRoot(r.req) + " "
 	title = th.separator.Render("─") + th.resultsTitle.Render(ansi.Truncate(title, width-2, "…"))
 	out = append(out, fit(title+th.separator.Render(strings.Repeat("─", max(0, width-ansi.StringWidth(title)))), width))
 
@@ -192,10 +192,30 @@ func relPath(req search.Request, path string) string {
 	if req.Scope == search.File {
 		return filepath.Base(path)
 	}
-	if rel, err := filepath.Rel(req.Root, path); err == nil {
-		return rel
+	if root := relBase(req); root != "" {
+		if rel, err := filepath.Rel(root, path); err == nil {
+			return rel
+		}
 	}
 	return path
+}
+
+// relBase is the directory match paths show relative to: the root, or for an
+// open search with files in no shared directory, none.
+func relBase(req search.Request) string {
+	if req.Scope != search.Open || len(req.Files) != 1 {
+		return req.Root
+	}
+	return filepath.Dir(req.Files[0])
+}
+
+// openRoot is the results title's location: the root, or for an open search
+// of one file the file itself.
+func openRoot(req search.Request) string {
+	if req.Scope == search.Open && len(req.Files) == 1 {
+		return tildePath(req.Files[0])
+	}
+	return tildePath(req.Root)
 }
 
 // trimMatch strips leading indentation and tabs from a match's text, shifting

@@ -36,6 +36,7 @@ explains each feature.
 | Key     | Action                                         | Name                                 |
 |---------|------------------------------------------------|--------------------------------------|
 | `/`     | search this file                               | `normal.search_file`                 |
+| `gb`    | search the open files                          | `normal.search_open`                 |
 | `?`     | search the directory or repo                   | `normal.search_files`                |
 | `n/N`   | next / previous match                          | `normal.next_match` / `prev_match`   |
 | `gr`    | open / close the results list                  | `normal.toggle_results`              |
@@ -45,18 +46,18 @@ explains each feature.
 
 ## Search bar
 
-| Key             | Action                                   | Name                                   |
-|-----------------|------------------------------------------|----------------------------------------|
-| `enter`         | search (empty repeats the last search)   | `search.submit`                        |
-| `esc`           | cancel and kill the search               | `search.cancel`                        |
-| `ctrl+c`        | clear the input (again to cancel)        | `search.clear`                         |
-| `tab/shift+tab` | next / previous scope: file → dir → repo | `search.scope_next` / `scope_prev`     |
-| `ctrl+r`        | regex / literal text                     | `search.toggle_literal`                |
-| `up/down`       | previous / next search in history        | `search.history_prev` / `history_next` |
-| `ctrl+w`        | delete the word before the cursor        | (fixed)                                |
-| `ctrl+u/k`      | delete to the start / end                | (fixed)                                |
-| `ctrl+a/e`      | go to the start / end                    | (fixed)                                |
-| `alt+b/f`       | a word left / right                      | (fixed)                                |
+| Key             | Action                                          | Name                                   |
+|-----------------|-------------------------------------------------|----------------------------------------|
+| `enter`         | search (empty repeats the last search)          | `search.submit`                        |
+| `esc`           | cancel and kill the search                      | `search.cancel`                        |
+| `ctrl+c`        | clear the input (again to cancel)               | `search.clear`                         |
+| `tab/shift+tab` | next / previous scope: file → open → dir → repo | `search.scope_next` / `scope_prev`     |
+| `ctrl+r`        | regex / literal text                            | `search.toggle_literal`                |
+| `up/down`       | previous / next search in history               | `search.history_prev` / `history_next` |
+| `ctrl+w`        | delete the word before the cursor               | (fixed)                                |
+| `ctrl+u/k`      | delete to the start / end                       | (fixed)                                |
+| `ctrl+a/e`      | go to the start / end                           | (fixed)                                |
+| `alt+b/f`       | a word left / right                             | (fixed)                                |
 
 ## Results list
 

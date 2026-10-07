@@ -130,7 +130,27 @@ func (a *App) submit() tea.Cmd {
 		a.crossScope = a.scope
 	}
 	req := search.Request{Query: q, Mode: a.mode, Scope: a.scope, Root: search.Root(a.pane.doc.Path, a.scope)}
+	if a.scope == search.Open {
+		req.Files = a.openFiles()
+		if len(req.Files) == 1 {
+			req.Root = req.Files[0]
+		}
+	}
 	return a.runSearch(req, a.pane)
+}
+
+// openFiles is every open file, deduplicated, in tab order: what the open
+// scope searches. Paths are absolute (see doc.Load), so they compare with ==.
+func (a *App) openFiles() []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, p := range a.allPanes() {
+		if path := p.doc.Path; !seen[path] {
+			seen[path] = true
+			out = append(out, path)
+		}
+	}
+	return out
 }
 
 // runSearch starts a typed search in the background, cancelling any search

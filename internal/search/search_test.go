@@ -32,7 +32,7 @@ func TestParseMatch(t *testing.T) {
 }
 
 func TestScope(t *testing.T) {
-	if File.Next(1) != Dir || Repo.Next(1) != File || File.Next(-1) != Repo {
+	if File.Next(1) != Open || Open.Next(1) != Dir || Dir.Next(1) != Repo || Repo.Next(1) != File || File.Next(-1) != Repo {
 		t.Fatal("Next does not cycle")
 	}
 	dir := t.TempDir()
@@ -246,6 +246,37 @@ func TestRunMultiTerm(t *testing.T) {
 	// A bad regex in any term is still an error.
 	if _, err = Run(ctx, Request{Query: "( alpha", Scope: File, Root: a}); err == nil {
 		t.Fatal("bad regex in one term should be an error")
+	}
+}
+
+// The open scope searches exactly the given files, including non-markdown
+// ones, and nothing else.
+func TestRunOpenScope(t *testing.T) {
+	if _, err := exec.LookPath("rg"); err != nil {
+		t.Skip("rg not installed")
+	}
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	a := write("a.md", "open needle here\n")
+	b := write("b.txt", "another open needle\n")
+	write("c.md", "closed needle\n")
+	res, err := Run(context.Background(), Request{Query: "needle", Scope: Open, Root: dir, Files: []string{a, b}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Matches) != 2 || res.Files != 2 {
+		t.Fatalf("open search: %+v", res)
+	}
+	for _, m := range res.Matches {
+		if m.Path != a && m.Path != b {
+			t.Fatalf("open search left its files: %+v", res)
+		}
 	}
 }
 

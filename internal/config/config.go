@@ -37,7 +37,7 @@ type Startup struct {
 }
 
 type Search struct {
-	Scope   search.Scope `toml:"scope"` // where ? starts: file, dir or repo
+	Scope   search.Scope `toml:"scope"` // where ? starts: file, open, dir or repo
 	Literal bool         `toml:"literal"`
 	Case    search.Case  `toml:"case"` // ignore, smart or sensitive
 }
@@ -185,7 +185,7 @@ func Template(bindings []Binding) string {
 	fmt.Fprintf(&b, "# style = %q\n\n# Maximum word-wrap width.\n# width = %d\n\n", d.Style, d.Width)
 	fmt.Fprintf(&b, "[startup]\n# What is shown at start-up (each can be toggled while running).\n"+
 		"# toc = %t\n# search_bar = %t\n# tabs = %t\n\n", d.Startup.TOC, d.Startup.SearchBar, d.Startup.Tabs)
-	fmt.Fprintf(&b, "[search]\n# Where ? starts: file, dir or repo. It then remembers the last scope used.\n# scope = %q\n"+
+	fmt.Fprintf(&b, "[search]\n# Where ? starts: file, open, dir or repo. It then remembers the last scope used.\n# scope = %q\n"+
 		"# Match a query as one phrase of plain text, ignoring the spacing and inline\n# markup between its words, rather than as space-separated regexes; ctrl+r\n# toggles it.\n# literal = %t\n"+
 		"# Letter case: ignore (rg -i), smart (rg -S: sensitive if the query has capitals) or sensitive.\n# case = %q\n\n",
 		d.Search.Scope, d.Search.Literal, d.Search.Case)

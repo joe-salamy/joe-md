@@ -33,15 +33,16 @@ type Scope int
 
 const (
 	File Scope = iota // the current file
+	Open              // every open file
 	Dir               // the current file's directory, recursively
 	Repo              // the enclosing git repository (or Dir outside one)
 )
 
-var scopeNames = [...]string{"file", "dir", "repo"}
+var scopeNames = [...]string{"file", "open", "dir", "repo"}
 
 func (s Scope) String() string { return scopeNames[s] }
 
-// Next cycles file → dir → repo → file (or backwards for step < 0).
+// Next cycles file → open → dir → repo → file (or backwards for step < 0).
 func (s Scope) Next(step int) Scope {
 	n := Scope(len(scopeNames))
 	return ((s+Scope(step))%n + n) % n
@@ -119,8 +120,9 @@ type Request struct {
 	Query string // see Terms
 	Mode
 	Scope Scope
-	Root  string // file or directory to search, from Root
-	Limit int    // stop after this many matching lines; 0 means the default
+	Root  string   // file or directory to search, from Root
+	Files []string // open files to search, for Open (absolute paths)
+	Limit int      // stop after this many matching lines; 0 means the default
 }
 
 // Default limits: a list of results across files is only useful up to a
@@ -231,9 +233,10 @@ func hasUpper(term string, literal bool) bool {
 }
 
 // Run searches with ripgrep. Directory scopes only search markdown files; a
-// single file is searched whatever its extension. The terms (see Terms) are
-// ANDed: a line matches only if every term matches it, and then carries the
-// spans of every term, so the results list and the pane highlight them all.
+// single file, and the open scope's explicit files, are searched whatever
+// their extension. The terms (see Terms) are ANDed: a line matches only if
+// every term matches it, and then carries the spans of every term, so the
+// results list and the pane highlight them all.
 //
 // The rarest term searches the scope, and the lines it finds go in batches
 // through the other terms (see narrow), so the search reads the files once
@@ -334,7 +337,8 @@ func byRarity(ctx context.Context, rg string, req Request, terms []string) []str
 
 // count is how many lines term matches in the scope, or MaxInt on an error.
 func count(ctx context.Context, rg string, req Request, term string) int {
-	out, err := exec.CommandContext(ctx, rg, append(args(req, false), "--count", "--no-filename", "--", req.expr(term), req.Root)...).Output()
+	cmdArgs := append(append(args(req, false), "--count", "--no-filename", "--", req.expr(term)), paths(req, false)...)
+	out, err := exec.CommandContext(ctx, rg, cmdArgs...).Output()
 	var exit *exec.ExitError
 	if err != nil && !(errors.As(err, &exit) && exit.ExitCode() == 1) {
 		return math.MaxInt
@@ -368,28 +372,38 @@ func narrow(ctx context.Context, rg string, req Request, term string, ms []Match
 	return out, err
 }
 
-// args are ripgrep's options for searching the root, or stdin.
+// args are ripgrep's options for searching the scope, or stdin.
 func args(req Request, stdin bool) []string {
 	out := []string{[...]string{"-i", "-S", "-s"}[req.Case]}
 	switch {
 	case stdin:
 		out = append(out, "--text")
-	case req.Scope != File:
+	case req.Scope != File && req.Scope != Open:
 		out = append(out, "-t", "markdown")
 	}
 	return out
 }
 
-// stream runs term through ripgrep over req.Root, or over stdin if it is
-// set, handing each matching line to f until f returns false.
-func stream(ctx context.Context, rg string, req Request, term string, stdin io.Reader, f func(Match) bool) error {
-	path := req.Root
-	if stdin != nil {
-		path = "-"
+// paths are what ripgrep searches for req: stdin, the open files, or the root.
+func paths(req Request, stdin bool) []string {
+	switch {
+	case stdin:
+		return []string{"-"}
+	case req.Scope == Open:
+		return req.Files
+	default:
+		return []string{req.Root}
 	}
+}
+
+// stream runs term through ripgrep over the scope's paths, or over stdin if
+// it is set, handing each matching line to f until f returns false.
+func stream(ctx context.Context, rg string, req Request, term string, stdin io.Reader, f func(Match) bool) error {
+	cmdArgs := append(append(args(req, stdin != nil), "--json"), "--", req.expr(term))
+	cmdArgs = append(cmdArgs, paths(req, stdin != nil)...)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, rg, append(append(args(req, stdin != nil), "--json"), "--", req.expr(term), path)...)
+	cmd := exec.CommandContext(ctx, rg, cmdArgs...)
 	cmd.Stdin = stdin
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

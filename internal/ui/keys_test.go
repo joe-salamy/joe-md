@@ -388,6 +388,33 @@ func TestEscDropsResults(t *testing.T) {
 	}
 }
 
+func TestSearchOpenSearchesOpenFiles(t *testing.T) {
+	dir := fixture(t)
+	aPath, bPath := filepath.Join(dir, "a.md"), filepath.Join(dir, "b.md")
+	a := newTestApp(t, aPath, bPath)
+	press(a, "g", "b")
+	if !a.typing || a.scope != search.Open {
+		t.Fatalf("g b should start an open search, typing=%v scope=%v", a.typing, a.scope)
+	}
+	typeText(a, "text")
+	cmd := a.submit() // runs in the background like a typed search
+	if cmd == nil {
+		t.Fatal("submitting should start a search")
+	}
+	a.update(cmd())
+	if a.results == nil || len(a.results.res.Matches) != 2 || a.results.res.Files != 2 {
+		t.Fatalf("open search should find both files: %+v", a.results)
+	}
+	for _, m := range a.results.res.Matches {
+		if m.Path != aPath && m.Path != bPath {
+			t.Fatalf("open search left its files: %+v", a.results.res)
+		}
+	}
+	if got := a.results.req.Files; len(got) != 2 || got[0] != aPath || got[1] != bPath {
+		t.Fatalf("open files: %q", got)
+	}
+}
+
 func TestEscInBarKillsRunningSearch(t *testing.T) {
 	dir := fixture(t)
 	a := newTestApp(t, filepath.Join(dir, "a.md"))
