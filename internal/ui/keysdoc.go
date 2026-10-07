@@ -204,8 +204,9 @@ explains each feature.
 Click a tab to switch, middle-click to close it, and scroll over the tab bar
 to step through tabs. Click a pane to focus it, drag a border to resize it,
 and scroll to move the pane under the pointer. Click a heading in the sidebar
-to jump to it. In the file menu, click an entry to open it and click outside
-to close it; the same goes for the help.
+to jump to it. In the file menu, click an entry to open it, shift-click to
+mark to it, ctrl-click to mark just it, and click outside to close it; the
+same goes for the help.
 `)
 	return b.String()
 }

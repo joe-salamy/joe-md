@@ -173,7 +173,9 @@ func init() {
 		&action{name: "show_path", desc: "show the file's full path", keys: keys("ctrl+g"),
 			run: docOnly(func(a *App, c call) { a.msg = a.pane.doc.Path })},
 		&action{name: "copy_name", desc: "copy the file's name", row: "copy the file's name / full path / contents", keys: keys("y n"),
-			run: docCmd(func(a *App, c call) tea.Cmd { return a.copyText(filepath.Base(a.pane.doc.Path), filepath.Base(a.pane.doc.Path)) })},
+			run: docCmd(func(a *App, c call) tea.Cmd {
+				return a.copyText(filepath.Base(a.pane.doc.Path), filepath.Base(a.pane.doc.Path))
+			})},
 		&action{name: "copy_path", desc: "copy the file's full path", row: "copy the file's name / full path / contents", keys: keys("y p"),
 			run: docCmd(func(a *App, c call) tea.Cmd { return a.copyText(a.pane.doc.Path, a.pane.doc.Path) })},
 		&action{name: "copy_contents", desc: "copy the file's full contents", row: "copy the file's name / full path / contents", keys: keys("y f"),
@@ -404,7 +406,13 @@ func init() {
 	)
 
 	msel := func(f func(m *Menu, c call, rows int) int) func(a *App, c call) tea.Cmd {
-		return do(func(a *App, c call) { m, rows := a.menu, a.menuRows(); m.selectIdx(f(m, c, rows), rows) })
+		return do(func(a *App, c call) { m, rows := a.menu, a.menuRows(); m.move(f(m, c, rows), rows) })
+	}
+	mselKeep := func(f func(m *Menu, c call, rows int) int) func(a *App, c call) tea.Cmd {
+		return do(func(a *App, c call) { m, rows := a.menu, a.menuRows(); m.moveKeep(f(m, c, rows), rows) })
+	}
+	mselExt := func(f func(m *Menu, c call, rows int) int) func(a *App, c call) tea.Cmd {
+		return do(func(a *App, c call) { m, rows := a.menu, a.menuRows(); m.extend(f(m, c, rows), rows) })
 	}
 	add(ctxMenu, "File menu",
 		&action{name: "down", desc: "next entry", row: "next / previous entry", keys: keys("j", "down"),
@@ -419,8 +427,22 @@ func init() {
 			run: msel(func(m *Menu, c call, rows int) int { return 0 })},
 		&action{name: "last", desc: "last entry", row: "first / last entry", keys: keys("G", "end"),
 			run: msel(func(m *Menu, c call, rows int) int { return len(m.shown) - 1 })},
-		&action{name: "open", desc: "enter the directory, or open the file in a new tab", keys: keys("l", "right", "enter"),
+		&action{name: "down_extend", desc: "mark to the next entry", row: "mark to the next / previous entry", keys: keys("shift+j", "shift+down", "J"),
+			run: mselExt(func(m *Menu, c call, rows int) int { return m.cursor + c.n })},
+		&action{name: "up_extend", desc: "mark to the previous entry", row: "mark to the next / previous entry", keys: keys("shift+k", "shift+up", "K"),
+			run: mselExt(func(m *Menu, c call, rows int) int { return m.cursor - c.n })},
+		&action{name: "down_keep", desc: "next entry, keeping the marks", row: "next / previous entry, keeping the marks", keys: keys("ctrl+j", "ctrl+n", "ctrl+down"),
+			run: mselKeep(func(m *Menu, c call, rows int) int { return m.cursor + c.n })},
+		&action{name: "up_keep", desc: "previous entry, keeping the marks", row: "next / previous entry, keeping the marks", keys: keys("ctrl+k", "ctrl+p", "ctrl+up"),
+			run: mselKeep(func(m *Menu, c call, rows int) int { return m.cursor - c.n })},
+		&action{name: "open", desc: "enter the directory, or open the marked files in new tabs", keys: keys("l", "right", "enter"),
 			run: func(a *App, c call) tea.Cmd { return a.menuActivate(openNewTab) }},
+		&action{name: "toggle", desc: "mark / unmark the file", keys: keys("space", "t"),
+			run: do(func(a *App, c call) { a.menu.flip(); a.menu.moveKeep(a.menu.cursor+1, a.menuRows()) })},
+		&action{name: "toggle_here", desc: "mark / unmark the file, staying put", keys: keys("ctrl+space", "ctrl+t"),
+			run: do(func(a *App, c call) { a.menu.flip() })},
+		&action{name: "select_all", desc: "mark / unmark every shown file", keys: keys("ctrl+a"),
+			run: do(func(a *App, c call) { a.menu.markAll() })},
 		&action{name: "open_here", desc: "open the file in the focused pane", keys: keys("O"),
 			run: func(a *App, c call) tea.Cmd { return a.menuActivate(openReplace) }},
 		&action{name: "open_vsplit", desc: "open the file in a new pane beside", row: "open the file in a new pane beside / below", keys: keys("v"),
@@ -451,11 +473,16 @@ func init() {
 			})},
 		&action{name: "filter", desc: "filter names", keys: keys("/"),
 			run: func(a *App, c call) tea.Cmd { a.menu.filtering = true; return a.menu.filter.Focus() }},
-		&action{name: "close", desc: "close the menu (esc clears a filter first)", keys: keys("esc", "q", "o", "ctrl+c"),
+		&action{name: "close", desc: "close the menu (esc clears the marks first)", keys: keys("esc", "q", "o", "ctrl+c"),
 			run: func(a *App, c call) tea.Cmd {
 				if c.key == "esc" && a.menu.filter.Value() != "" {
 					a.menu.filter.SetValue("")
 					a.menu.refilter(a.menuAll, a.menuRows())
+					return nil
+				}
+				if c.key == "esc" && len(a.menu.sel) > 0 {
+					a.menu.clearSel()
+					a.menu.anchor = a.menu.cursor
 					return nil
 				}
 				return a.closeMenu()
@@ -477,9 +504,9 @@ func init() {
 				}
 			})},
 		&action{name: "down", desc: "next entry", row: "next / previous entry", keys: keys("down"),
-			run: msel(func(m *Menu, c call, rows int) int { return m.cursor + 1 })},
+			run: mselKeep(func(m *Menu, c call, rows int) int { return m.cursor + 1 })},
 		&action{name: "up", desc: "previous entry", row: "next / previous entry", keys: keys("up"),
-			run: msel(func(m *Menu, c call, rows int) int { return m.cursor - 1 })},
+			run: mselKeep(func(m *Menu, c call, rows int) int { return m.cursor - 1 })},
 	)
 
 	hscroll := func(f func(a *App, c call) int) func(a *App, c call) tea.Cmd {

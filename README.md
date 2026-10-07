@@ -219,22 +219,29 @@ in it.
 on that file. It lists one directory at a time, like lf: directories first,
 then markdown files. Hidden files, files ignored by git and other files are
 left out until you press `.`, which shows them dimmed. A `•` marks files
-that are already open.
+that are already open, and a `+` marks the files you picked.
 
 | Key                          | Action                              |
 |------------------------------|-------------------------------------|
 | `j` `k` `ctrl+d` `ctrl+u`    | move                                |
+| `shift+j` `shift+k` (`J` `K`) | mark to the next / previous entry   |
+| `ctrl+j` `ctrl+k`            | move, keeping the marks             |
+| `space` `t`                  | mark / unmark the file              |
 | `gg` `G`                     | first / last entry                  |
-| `l` `enter` `→`              | enter the directory, or open the file in a new tab |
-| `O`                          | open the file in the focused pane instead |
-| `v` `s`                      | open the file in a new pane beside / below |
+| `l` `enter` `→`              | enter the directory, or open the marked files in new tabs |
+| `O`                          | open the marked files in the focused pane instead |
+| `v` `s`                      | open the marked files in a new pane beside / below |
 | `h` `-` `backspace` `←`      | parent directory                    |
 | `~` `gh`                     | home directory                      |
 | `gr`                         | root of the git repository          |
 | `.`                          | show / hide hidden, ignored and non-markdown files |
 | `/`                          | filter names (`enter` opens the selection, `esc` clears) |
 | `r`                          | re-read the directory               |
-| `esc` `q` `o`                | close the menu                      |
+| `esc` `q` `o`                | close the menu (`esc` clears the marks first) |
+
+Only files can be marked; moving without `shift` or `ctrl` clears the marks.
+`enter` opens every marked file (plus the one under the cursor), each in its
+own tab. `esc` clears the marks before it closes the menu.
 
 The filter matches as you type. That is safe here, unlike searching file
 contents, because it only compares the names in one directory. Space-separated
@@ -242,7 +249,8 @@ words must all appear in the name, ignoring case. While filtering, `↑` `↓`
 move the selection and the search bar's line-editing keys work.
 
 Click an entry to open it, click outside the menu to close it, and scroll
-with the wheel.
+with the wheel. `shift`-click marks to the entry, `ctrl`-click marks just
+it.
 
 The mouse wheel scrolls whichever side it is over, and clicking a heading
 jumps to it. Hold `shift` while dragging to select text in most terminals.

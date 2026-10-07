@@ -135,22 +135,27 @@ These follow the window prefix. A count before the prefix or after it resizes by
 
 ## File menu
 
-| Key                        | Action                                             | Name                               |
-|----------------------------|----------------------------------------------------|------------------------------------|
-| `j/k` `down/up`            | next / previous entry                              | `menu.down` / `up`                 |
-| `ctrl+d/u` `pgdown/pgup`   | half a page down / up                              | `menu.half_down` / `half_up`       |
-| `gg/G` `home/end`          | first / last entry                                 | `menu.first` / `last`              |
-| `l` `right` `enter`        | enter the directory, or open the file in a new tab | `menu.open`                        |
-| `O`                        | open the file in the focused pane                  | `menu.open_here`                   |
-| `v/s`                      | open the file in a new pane beside / below         | `menu.open_vsplit` / `open_hsplit` |
-| `h` `left` `-` `backspace` | parent directory                                   | `menu.parent`                      |
-| `~` `gh`                   | home directory                                     | `menu.home`                        |
-| `gr`                       | root of the git repository                         | `menu.repo_root`                   |
-| `.`                        | show / hide hidden, ignored and non-markdown files | `menu.toggle_all`                  |
-| `r`                        | re-read the directory                              | `menu.refresh`                     |
-| `/`                        | filter names                                       | `menu.filter`                      |
-| `esc` `q` `o` `ctrl+c`     | close the menu (esc clears a filter first)         | `menu.close`                       |
-| `Q`                        | quit                                               | `menu.quit`                        |
+| Key                                  | Action                                                    | Name                               |
+|--------------------------------------|-----------------------------------------------------------|------------------------------------|
+| `j/k` `down/up`                      | next / previous entry                                     | `menu.down` / `up`                 |
+| `ctrl+d/u` `pgdown/pgup`             | half a page down / up                                     | `menu.half_down` / `half_up`       |
+| `gg/G` `home/end`                    | first / last entry                                        | `menu.first` / `last`              |
+| `shift+j/k` `shift+down/up` `J/K`    | mark to the next / previous entry                         | `menu.down_extend` / `up_extend`   |
+| `ctrl+j/k` `ctrl+n/p` `ctrl+down/up` | next / previous entry, keeping the marks                  | `menu.down_keep` / `up_keep`       |
+| `l` `right` `enter`                  | enter the directory, or open the marked files in new tabs | `menu.open`                        |
+| `space` `t`                          | mark / unmark the file                                    | `menu.toggle`                      |
+| `ctrl+space` `ctrl+t`                | mark / unmark the file, staying put                       | `menu.toggle_here`                 |
+| `ctrl+a`                             | mark / unmark every shown file                            | `menu.select_all`                  |
+| `O`                                  | open the file in the focused pane                         | `menu.open_here`                   |
+| `v/s`                                | open the file in a new pane beside / below                | `menu.open_vsplit` / `open_hsplit` |
+| `h` `left` `-` `backspace`           | parent directory                                          | `menu.parent`                      |
+| `~` `gh`                             | home directory                                            | `menu.home`                        |
+| `gr`                                 | root of the git repository                                | `menu.repo_root`                   |
+| `.`                                  | show / hide hidden, ignored and non-markdown files        | `menu.toggle_all`                  |
+| `r`                                  | re-read the directory                                     | `menu.refresh`                     |
+| `/`                                  | filter names                                              | `menu.filter`                      |
+| `esc` `q` `o` `ctrl+c`               | close the menu (esc clears the marks first)               | `menu.close`                       |
+| `Q`                                  | quit                                                      | `menu.quit`                        |
 
 ## Menu filter
 
@@ -177,5 +182,6 @@ Other keys edit the filter, which matches as you type; the search bar's line-edi
 Click a tab to switch, middle-click to close it, and scroll over the tab bar
 to step through tabs. Click a pane to focus it, drag a border to resize it,
 and scroll to move the pane under the pointer. Click a heading in the sidebar
-to jump to it. In the file menu, click an entry to open it and click outside
-to close it; the same goes for the help.
+to jump to it. In the file menu, click an entry to open it, shift-click to
+mark to it, ctrl-click to mark just it, and click outside to close it; the
+same goes for the help.

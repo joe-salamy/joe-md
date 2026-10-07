@@ -27,6 +27,14 @@ import (
 
 // Menu is the open pop-up's state. showAll lives on App so it survives
 // closing the menu.
+//
+// Multi-select marks files, like a file manager: shift extends the marks
+// from an anchor entry to the cursor, ctrl moves the cursor without touching
+// them, space and t flip the entry under the cursor, and enter opens every
+// marked file. Only files can be marked: directories are entered, not
+// opened, and the ../ entry is never marked. Plain moves clear the marks, a
+// new directory clears them, and refiltering keeps the marks that are still
+// shown.
 type Menu struct {
 	list      // over shown
 	dir       string
@@ -36,6 +44,9 @@ type Menu struct {
 	filtering bool   // the filter input has the keyboard
 	pending   string // the keys so far of a sequence ("g")
 	err       string
+	sel       map[int]bool // marked entry indexes
+	ext       map[int]bool // marks the last extend added, so shrinking it unmarks
+	anchor    int          // shown position the next extend starts from
 }
 
 type entry struct {
@@ -94,7 +105,8 @@ func (a *App) menuLoad(dir, sel string) bool {
 		return false
 	}
 	m.dir, m.entries, m.err = dir, es, ""
-	m.shown = nil // indexes the old listing
+	m.shown = nil           // indexes the old listing
+	m.sel, m.ext = nil, nil // entries changed: every mark is stale
 	m.filter.SetValue("")
 	m.filtering = false
 	m.filter.Blur()
@@ -172,7 +184,8 @@ func gitIgnored(dir string, es []entry) map[string]bool {
 }
 
 // refilter recomputes the visible entries, keeping the cursor on the same
-// entry when it is still visible.
+// entry when it is still visible. Marks stay on entries that are still
+// shown; the extend range is rebuilt from the surviving marks.
 func (m *Menu) refilter(showAll bool, rows int) {
 	sel := ""
 	if e, ok := m.current(); ok {
@@ -199,8 +212,22 @@ func (m *Menu) refilter(showAll bool, rows int) {
 			m.shown = append(m.shown, i)
 		}
 	}
+	keep := map[int]bool{}
+	if m.sel != nil {
+		visible := map[int]bool{}
+		for _, j := range m.shown {
+			visible[j] = true
+		}
+		for j := range m.sel {
+			if visible[j] {
+				keep[j] = true
+			}
+		}
+	}
+	m.sel, m.ext = keep, map[int]bool{}
 	m.cursor, m.offset = 0, 0
 	m.selectName(sel, rows)
+	m.anchor = m.cursor
 }
 
 func (m *Menu) current() (entry, bool) {
@@ -227,7 +254,138 @@ func (m *Menu) selectIdx(i, rows int) { m.list.selectIdx(i, len(m.shown), rows) 
 
 func (m *Menu) scroll(n, rows int) { m.list.scroll(n, len(m.shown), rows) }
 
-// menuActivate is l / enter: go into a directory or open a file.
+// markable reports whether the entry at entries index j can carry a mark:
+// files only. Directories are entered, not opened, and .. never opens.
+func (m *Menu) markable(j int) bool {
+	e := m.entries[j]
+	return !e.dir && !e.parent
+}
+
+// marked lists the entries indexes of the marked files in shown order.
+func (m *Menu) marked() []int {
+	var out []int
+	for _, j := range m.shown {
+		if m.sel[j] {
+			out = append(out, j)
+		}
+	}
+	return out
+}
+
+// clearSel drops every mark and the pending extend range.
+func (m *Menu) clearSel() { m.sel, m.ext = nil, nil }
+
+// clampAnchor keeps the anchor inside the listing.
+func (m *Menu) clampAnchor() {
+	if len(m.shown) == 0 {
+		m.anchor = 0
+		return
+	}
+	m.anchor = max(0, min(m.anchor, len(m.shown)-1))
+}
+
+// move puts the cursor on shown position i. Plain moves drop the marks and
+// re-anchor the next extend there.
+func (m *Menu) move(i, rows int) {
+	m.clearSel()
+	m.selectIdx(i, rows)
+	m.anchor = m.cursor
+}
+
+// moveKeep puts the cursor on shown position i, leaving the marks alone.
+// Moves with ctrl held go through here.
+func (m *Menu) moveKeep(i, rows int) {
+	m.clampAnchor()
+	m.selectIdx(i, rows)
+}
+
+// extend puts the cursor on shown position i and marks every file from the
+// anchor to there. The previous extend range is replaced, so shrinking the
+// range unmarks; plain marks outside it survive. Moves with shift held go
+// through here.
+func (m *Menu) extend(i, rows int) {
+	m.clampAnchor()
+	m.selectIdx(i, rows)
+	lo, hi := m.anchor, m.cursor
+	if lo > hi {
+		lo, hi = hi, lo
+	}
+	for j := range m.ext {
+		delete(m.sel, j)
+	}
+	m.ext = map[int]bool{}
+	if m.sel == nil {
+		m.sel = map[int]bool{}
+	}
+	for p := lo; p <= hi; p++ {
+		if p < 0 || p >= len(m.shown) {
+			continue
+		}
+		if j := m.shown[p]; m.markable(j) {
+			m.sel[j] = true
+			m.ext[j] = true
+		}
+	}
+	if len(m.sel) == 0 {
+		m.sel = nil
+	}
+}
+
+// flip toggles the mark on the entry under the cursor and re-anchors the
+// next extend there. Directories and .. cannot be marked: the cursor moves
+// but nothing is marked.
+func (m *Menu) flip() {
+	m.clampAnchor()
+	if m.cursor < 0 || m.cursor >= len(m.shown) {
+		return
+	}
+	j := m.shown[m.cursor]
+	if !m.markable(j) {
+		m.anchor = m.cursor
+		m.ext = map[int]bool{}
+		return
+	}
+	if m.sel == nil {
+		m.sel = map[int]bool{}
+	}
+	if m.sel[j] {
+		delete(m.sel, j)
+		if len(m.sel) == 0 {
+			m.sel = nil
+		}
+	} else {
+		m.sel[j] = true
+	}
+	if m.ext != nil {
+		delete(m.ext, j)
+	}
+	m.anchor = m.cursor
+}
+
+// markAll marks every shown file; with any marked it unmarks them all.
+func (m *Menu) markAll() {
+	if len(m.sel) > 0 {
+		m.clearSel()
+		m.anchor = m.cursor
+		return
+	}
+	for _, j := range m.shown {
+		if m.markable(j) {
+			if m.sel == nil {
+				m.sel = map[int]bool{}
+			}
+			m.sel[j] = true
+		}
+	}
+	m.ext = map[int]bool{}
+	m.anchor = m.cursor
+}
+
+// menuActivate is l / enter: go into a directory or open the marked files.
+// With marks, every marked file opens along with the file under the cursor
+// when it is not already marked. Directories still just change directory
+// and drop the marks through menuLoad; opening nothing keeps the menu open
+// with the error in the footer.
 func (a *App) menuActivate(mode openMode) tea.Cmd {
 	m := a.menu
 	e, ok := m.current()
@@ -237,9 +395,26 @@ func (a *App) menuActivate(mode openMode) tea.Cmd {
 	case e.parent:
 		a.menuUp()
 	case e.dir:
+		if len(m.sel) > 0 {
+			m.err = "directories open one at a time: unmark to enter"
+			return nil
+		}
 		a.menuLoad(filepath.Join(m.dir, e.name), "")
 	default:
-		if a.openAt(filepath.Join(m.dir, e.name), mode) {
+		targets := m.marked()
+		if cur := m.shown[m.cursor]; m.markable(cur) && !m.sel[cur] {
+			targets = append(targets, cur)
+		}
+		if len(targets) == 0 {
+			return nil
+		}
+		ok := false
+		for _, j := range targets {
+			if a.openAt(filepath.Join(m.dir, m.entries[j].name), mode) {
+				ok = true
+			}
+		}
+		if ok {
 			a.menu = nil
 			a.focus = focusDoc
 		} else {
@@ -328,7 +503,8 @@ func (a *App) menuView() []string {
 		line := ""
 		switch {
 		case i < len(m.shown):
-			line = a.menuEntry(m.entries[m.shown[i]], i == m.cursor, open[filepath.Join(m.dir, m.entries[m.shown[i]].name)], inner)
+			j := m.shown[i]
+			line = a.menuEntry(m.entries[j], i == m.cursor, m.sel[j], open[filepath.Join(m.dir, m.entries[j].name)], inner)
 		case i == len(m.shown) && empty && m.err != "":
 			line = th.menuErr.Render(" " + m.err)
 		case i == len(m.shown) && empty && m.filter.Value() != "":
@@ -351,19 +527,24 @@ func (a *App) menuView() []string {
 			all = "md only"
 		}
 		h := func(name string) string { return a.hint(ctxMenu, name) }
-		left = th.dim.Render(" " + h("filter") + " filter · " + h("toggle_all") + " " + all + " · " + h("parent") + " up · " +
+		left = th.dim.Render(" " + h("toggle") + " mark · " + h("filter") + " filter · " + h("toggle_all") + " " + all + " · " + h("parent") + " up · " +
 			h("open_here") + " here · " + h("open_vsplit") + "/" + h("open_hsplit") + " split · " + h("close") + " close")
 	}
 	return drawBox(th, " "+title+" ", lines, left, right, w, h)
 }
 
-// count is the footer's position: entry i+1 of how many are shown.
+// count is the footer's position: entry i+1 of how many are shown, with the
+// number of marked files after it.
 func (m *Menu) count(i int) string {
 	n := strconv.Itoa(len(m.shown))
-	if len(m.shown) == 0 {
-		return n
+	marks := ""
+	if len(m.sel) > 0 {
+		marks = " +" + strconv.Itoa(len(m.sel))
 	}
-	return strconv.Itoa(i+1) + "/" + n
+	if len(m.shown) == 0 {
+		return n + marks
+	}
+	return strconv.Itoa(i+1) + "/" + n + marks
 }
 
 // filterWidth is the room the filter input has in the footer, beside the
@@ -374,17 +555,20 @@ func (a *App) filterWidth() int {
 	return max(w-2-ansi.StringWidth(widest)-4, 1)
 }
 
-func (a *App) menuEntry(e entry, cursor, open bool, width int) string {
+func (a *App) menuEntry(e entry, cursor, marked, open bool, width int) string {
 	th := a.theme
-	mark := "  "
+	mark, glyph := "  ", "  "
 	if open {
-		mark = "• "
+		glyph = "• "
+	}
+	if marked {
+		mark = "+ "
 	}
 	name := e.name
 	if e.dir {
 		name += "/"
 	}
-	text := " " + mark + name
+	text := " " + mark + glyph + name
 	if cursor {
 		text = ansi.Truncate(text, width, "…")
 		return th.tocCursor.Render(text + strings.Repeat(" ", max(width-ansi.StringWidth(text), 0)))
@@ -396,11 +580,13 @@ func (a *App) menuEntry(e entry, cursor, open bool, width int) string {
 	case e.dir:
 		style = th.menuDir
 	}
-	return th.menuOpen.Render(" "+mark) + style.Render(ansi.Truncate(name, max(width-3, 1), "…"))
+	return th.menuOpen.Render(" "+mark+glyph) + style.Render(ansi.Truncate(name, max(width-5, 1), "…"))
 }
 
 // menuMouse handles the mouse while the menu is open: the wheel scrolls it,
-// a click on an entry opens it and a click outside closes the menu.
+// a click on an entry opens it and a click outside closes the menu. Shift
+// click extends the marks to the clicked entry, ctrl click flips the entry;
+// both leave the menu open.
 func (a *App) menuMouse(msg tea.MouseMsg) tea.Cmd {
 	x, y, w, h := a.menuRect()
 	step, outside := popupMouse(msg, x, y, w, h)
@@ -414,8 +600,16 @@ func (a *App) menuMouse(msg tea.MouseMsg) tea.Cmd {
 	}
 	row := m.Y - y - 1
 	if i := a.menu.offset + row; row >= 0 && row < a.menuRows() && i < len(a.menu.shown) {
-		a.menu.selectIdx(i, a.menuRows())
-		return a.menuActivate(openNewTab)
+		switch {
+		case m.Mod.Contains(tea.ModShift):
+			a.menu.extend(i, a.menuRows())
+		case m.Mod.Contains(tea.ModCtrl):
+			a.menu.moveKeep(i, a.menuRows())
+			a.menu.flip()
+		default:
+			a.menu.move(i, a.menuRows())
+			return a.menuActivate(openNewTab)
+		}
 	}
 	return nil
 }
