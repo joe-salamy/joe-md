@@ -185,7 +185,8 @@ func gitIgnored(dir string, es []entry) map[string]bool {
 
 // refilter recomputes the visible entries, keeping the cursor on the same
 // entry when it is still visible. Marks stay on entries that are still
-// shown; the extend range is rebuilt from the surviving marks.
+// shown; the extend range is dropped, so the next shift-move starts a new one
+// from the cursor.
 func (m *Menu) refilter(showAll bool, rows int) {
 	sel := ""
 	if e, ok := m.current(); ok {
@@ -447,7 +448,15 @@ func (a *App) menuKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return cmd
 	}
-	cmd, _ := a.dispatch(&m.pending, k, 0, ctxMenu)
+	if a.countDigit(k, m.pending) {
+		return nil
+	}
+	count := a.count
+	a.count = 0
+	cmd, _ := a.dispatch(&m.pending, k, count, ctxMenu)
+	if m.pending != "" {
+		a.count = count // keep the count for the rest of the sequence
+	}
 	return cmd
 }
 

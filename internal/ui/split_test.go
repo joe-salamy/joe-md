@@ -98,6 +98,25 @@ func TestSplitFocusClose(t *testing.T) {
 	}
 }
 
+// A lone pane splits below as soon as both halves get paneMinHeight rows,
+// status row included, and not before.
+func TestHSplitMinHeight(t *testing.T) {
+	dir := fixture(t)
+	for _, rows := range []int{2*paneMinHeight - 1, 2 * paneMinHeight} {
+		a := newTestApp(t, filepath.Join(dir, "a.md"))
+		for h := 1; a.tab().focus.h != rows; h++ {
+			if h > 40 {
+				t.Fatalf("no screen height gives a %d-row pane", rows)
+			}
+			a.Update(tea.WindowSizeMsg{Width: 100, Height: h})
+		}
+		ctrlW(a, "s")
+		if split := a.tab().multi(); split != (rows >= 2*paneMinHeight) {
+			t.Errorf("%d rows: split=%v", rows, split)
+		}
+	}
+}
+
 func TestSplitNesting(t *testing.T) {
 	dir := fixture(t)
 	a := newTestApp(t, filepath.Join(dir, "a.md"))

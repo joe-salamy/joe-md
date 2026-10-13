@@ -37,6 +37,18 @@ func menuCursor(a *App) string {
 	return e.name
 }
 
+// Counts work in the menu as in the document: 2j moves two entries.
+func TestMenuCount(t *testing.T) {
+	dir := fixture(t)
+	a := newTestApp(t, filepath.Join(dir, "b.md"))
+	press(a, "o") // shown: .. docs a.md b.md
+	openMenuAt(a, "..")
+	press(a, "2", "j")
+	if cur := menuCursor(a); cur != "a.md" || a.count != 0 {
+		t.Fatalf("2j: cursor %q, count %d", cur, a.count)
+	}
+}
+
 // Shift extends the marks from the anchor, like a file manager. Only files
 // join the range: directories and .. are skipped but the cursor still lands
 // on them. Shrinking the range unmarks.

@@ -151,6 +151,9 @@ func TestLeadingRuleIsNotFrontMatter(t *testing.T) {
 		if len(d.Headings) != 1 || d.Headings[0].Text != "H" || strings.Contains(d.Blocks[0].Text, "---") {
 			t.Errorf("%q: front matter not hidden: %+v %q", src, d.Headings, d.Blocks[0].Text)
 		}
+		if string(d.Source) != src {
+			t.Errorf("%q: Source should keep the front matter, got %q", src, d.Source)
+		}
 	}
 }
 

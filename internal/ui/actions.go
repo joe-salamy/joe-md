@@ -95,6 +95,7 @@ var fixedKeys = map[string][]fixedKey{
 		{"ctrl+w", "delete the word before the cursor"},
 		{"ctrl+u/k", "delete to the start / end"},
 		{"ctrl+a/e", "go to the start / end"},
+		{"ctrl+h/d", "delete backwards / forwards"},
 		{"alt+b/f", "a word left / right"},
 	},
 }
@@ -250,7 +251,7 @@ func init() {
 				if c.count > 0 {
 					return c.count - 1
 				}
-				return len(r.res.Matches) - 1
+				return r.Len() - 1
 			})},
 		&action{name: "open", desc: "open in a new tab", keys: keys("enter", "l"),
 			run: do(func(a *App, c call) { a.openResult(openNewTab) })},

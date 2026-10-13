@@ -106,6 +106,11 @@ func (p *Pane) setMatches(m *matches) {
 
 func (p *Pane) ClearMatches() { p.match = nil }
 
+// from reports whether m came from a search for req: same query, same mode.
+func (m *matches) from(req search.Request) bool {
+	return m != nil && m.query == req.Query && m.mode == req.Mode
+}
+
 // Query is the search the pane's matches came from, or "".
 func (p *Pane) Query() string {
 	if p.match == nil {

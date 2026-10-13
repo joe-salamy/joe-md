@@ -38,11 +38,12 @@ the current directory.
 ## Usage
 
 ```sh
-joe-md [flags] [FILE.md | DIR]...
+joe-md [flags] [FILE.md]... [DIR]
 ```
 
-Each file opens in its own tab. Given a directory, or nothing at all, joe-md
-starts with the file menu open there (the current directory by default).
+Each file opens in its own tab. Given a directory (at most one), or nothing at
+all, joe-md starts with the file menu open there (the current directory by
+default).
 
 | Flag         | Default | Meaning                                              |
 |--------------|---------|------------------------------------------------------|
@@ -99,8 +100,9 @@ highlights) follow `style`: dracula, tokyo-night and pink come with matching
 colours, and the other styles use defaults that suit the terminal's background.
 Colours set under `[theme]` win over both.
 
-Unknown settings, bad values and key conflicts stop joe-md with a message
-naming the line, so typos don't go unnoticed.
+Unknown settings, bad values, unknown key names and key conflicts stop joe-md
+with a message (naming the line for unknown settings and wrong types), so typos
+don't go unnoticed. Flags are checked the same way.
 
 Every key belongs to a named action in a context: `normal` (the document,
 and keys that work everywhere), `toc` and `results` (when focused; other keys

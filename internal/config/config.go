@@ -124,12 +124,14 @@ func Parse(b []byte, c *Config) error {
 		}
 		return err
 	}
-	return c.check()
+	return c.Check()
 }
 
 var colorRE = regexp.MustCompile(`^(#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}|[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])$`)
 
-func (c *Config) check() error {
+// Check reports a setting out of range: what Parse checks after decoding,
+// and what flags overriding the file must pass too.
+func (c *Config) Check() error {
 	if c.Width < 20 {
 		return fmt.Errorf("width %d: must be at least 20", c.Width)
 	}

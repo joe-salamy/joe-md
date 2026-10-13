@@ -25,7 +25,6 @@ type Block struct {
 	SrcEnd   int    // one past the last non-blank line of the block
 	Next     int    // first line of the following block (or line count)
 	Text     string // source text rendered for this block
-	Heading  int    // index into Doc.Headings, or -1
 }
 
 // Heading is a top-level markdown heading, used for the table of contents.
@@ -82,8 +81,8 @@ func isBinary(b []byte) bool {
 var md = goldmark.New(goldmark.WithExtensions(extension.GFM, extension.DefinitionList))
 
 // Parse splits src into top-level blocks.
-func Parse(src []byte) *Doc {
-	src = blankFrontMatter(src)
+func Parse(orig []byte) *Doc {
+	src := blankFrontMatter(orig)
 	lineStarts := []int{0}
 	for i, c := range src {
 		if c == '\n' && i+1 < len(src) {
@@ -95,7 +94,7 @@ func Parse(src []byte) *Doc {
 	}
 	lines := bytes.Split(bytes.TrimSuffix(src, []byte("\n")), []byte("\n"))
 
-	d := &Doc{Source: src, Lines: len(lines)}
+	d := &Doc{Source: orig, Lines: len(lines)} // Source keeps the front matter
 	root := md.Parser().Parse(text.NewReader(src))
 
 	// Collect block start lines. Link reference definitions render to
@@ -141,7 +140,7 @@ func Parse(src []byte) *Doc {
 	}
 
 	for i, s := range starts {
-		b := Block{SrcStart: s.line, Next: d.Lines, Heading: -1}
+		b := Block{SrcStart: s.line, Next: d.Lines}
 		if i == 0 {
 			b.SrcStart = 0 // leading blank lines / front matter belong to the first block
 		}
@@ -154,7 +153,6 @@ func Parse(src []byte) *Doc {
 		}
 		b.Text = joinLines(lines, s.line, b.Next)
 		if h, ok := s.node.(*ast.Heading); ok {
-			b.Heading = len(d.Headings)
 			d.Headings = append(d.Headings, Heading{
 				Level: h.Level,
 				Text:  strings.TrimSpace(inlineText(h, src)),
@@ -162,7 +160,6 @@ func Parse(src []byte) *Doc {
 			})
 		} else if p, ok := s.node.(*ast.Paragraph); ok && isStandaloneBold(p, src) {
 			if text := strings.TrimSpace(inlineText(p, src)); text != "" {
-				b.Heading = len(d.Headings)
 				d.Headings = append(d.Headings, Heading{
 					Level: boldLevel,
 					Text:  text,

@@ -278,6 +278,11 @@ func TestRunOpenScope(t *testing.T) {
 			t.Fatalf("open search left its files: %+v", res)
 		}
 	}
+	// With no files it finds nothing, not the working directory's lines.
+	t.Chdir(dir)
+	if res, err := Run(context.Background(), Request{Query: "needle", Scope: Open, Root: dir}); err != nil || len(res.Matches) != 0 {
+		t.Fatalf("open search of no files: %+v %v", res, err)
+	}
 }
 
 // A common term doesn't crowd out the lines a rarer one shares with it: the

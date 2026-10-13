@@ -26,7 +26,7 @@ func main() {
 	dump := flag.Bool("dump-config", false, "print a settings file with every setting at its default, and exit")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: joe-md [flags] [FILE.md | DIR]...\n\n"+
+		fmt.Fprintf(os.Stderr, "usage: joe-md [flags] [FILE.md]... [DIR]\n\n"+
 			"Each file opens in a tab. A directory, or no arguments, opens the file menu there.\n"+
 			"Flags override the settings file.\n\n")
 		flag.PrintDefaults()
@@ -65,6 +65,9 @@ func main() {
 			cfg.Startup.Tabs = !*noTabs
 		}
 	})
+	if err := cfg.Check(); err != nil {
+		fatal(err)
+	}
 	keymap, err := ui.NewKeymap(cfg.Keys)
 	if err != nil {
 		fatal(fmt.Errorf("%s: %w", path, err))
@@ -78,9 +81,10 @@ func main() {
 			fatal(err)
 		}
 		if fi.IsDir() {
-			if menuDir == "" {
-				menuDir = arg
+			if menuDir != "" {
+				fatal(fmt.Errorf("%s: only one directory can open the file menu", arg))
 			}
+			menuDir = arg
 			continue
 		}
 		d, err := doc.Load(arg)

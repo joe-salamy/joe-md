@@ -255,11 +255,7 @@ func (t *Tab) canSplit(vert bool) bool {
 	if vert {
 		return f.w >= 2*paneMinWidth+1
 	}
-	h := f.h
-	if !t.multi() {
-		h -= 2 // both halves will need a status row
-	}
-	return h >= 2*paneMinHeight
+	return f.h >= 2*paneMinHeight // paneMinHeight counts the status row
 }
 
 // close removes the focused pane, giving its space to a neighbour, which

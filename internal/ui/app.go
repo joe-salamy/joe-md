@@ -284,9 +284,7 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 		cmd, _ := a.dispatch(&a.help.pending, k, 0, ctxHelp)
 		return cmd
 	}
-	// Digits are a count, before a command or between ctrl+w and its key.
-	if len(k) == 1 && k[0] >= '0' && k[0] <= '9' && a.pending == "" && (a.count > 0 || k != "0") {
-		a.count = min(a.count*10+int(k[0]-'0'), 1_000_000)
+	if a.countDigit(k, a.pending) {
 		return nil
 	}
 	count := a.count
@@ -311,6 +309,16 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 		a.window = false
 	}
 	return cmd
+}
+
+// countDigit adds k to the pending count if it is a count digit: any digit
+// before a command, or between ctrl+w and its key, but not a leading 0.
+func (a *App) countDigit(k, pending string) bool {
+	if len(k) != 1 || k[0] < '0' || k[0] > '9' || pending != "" || a.count == 0 && k == "0" {
+		return false
+	}
+	a.count = min(a.count*10+int(k[0]-'0'), 1_000_000)
+	return true
 }
 
 // moveFocus is ctrl+w h/j/k/l. Past the edge panes, h reaches the sidebar

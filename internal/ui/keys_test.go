@@ -3,6 +3,7 @@ package ui
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -114,14 +115,14 @@ func TestConfigParse(t *testing.T) {
 
 func TestKeymapChanges(t *testing.T) {
 	km, err := NewKeymap(map[string]map[string][]string{
-		"normal": {"scroll_down": {"ctrl-j"}, "help": {"H"}, "open_menu": {"j"}},
+		"normal": {"scroll_down": {"ctrl-j", "Alt-Ctrl-K", "PgDown"}, "help": {"H"}, "open_menu": {"j"}},
 		"window": {"split_vertical": {"|"}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := km.Keys("normal", "scroll_down"); len(got) != 1 || got[0] != "ctrl+j" {
-		t.Errorf("ctrl-j should normalise to ctrl+j: %v", got)
+	if got := km.Keys("normal", "scroll_down"); !slices.Equal(got, []string{"ctrl+j", "ctrl+alt+k", "pgdown"}) {
+		t.Errorf("keys should be spelled as tea does: %v", got)
 	}
 	if x, _ := km.lookup("j", "normal"); x == nil || x.name != "open_menu" {
 		t.Error("j should move to open_menu")
@@ -133,12 +134,25 @@ func TestKeymapChanges(t *testing.T) {
 	for _, bad := range []map[string]map[string][]string{
 		{"nowhere": {"x": {"a"}}},
 		{"normal": {"fly": {"a"}}},
-		{"normal": {"help": {"g"}}},     // g starts gg, gt, ...
-		{"normal": {"help": {"5"}}},     // digits are counts
-		{"search": {"submit": {"a b"}}}, // no sequences while typing
+		{"normal": {"help": {"g"}}},        // g starts gg, gt, ...
+		{"normal": {"help": {"5"}}},        // digits are counts
+		{"search": {"submit": {"a b"}}},    // no sequences while typing
+		{"normal": {"help": {"ctrol+j"}}},  // no such key
+		{"normal": {"help": {"pagedown"}}}, // tea says pgdown
 	} {
 		if _, err := NewKeymap(bad); err == nil {
 			t.Errorf("%v should be an error", bad)
+		}
+	}
+}
+
+// Every default key is already spelled as tea does.
+func TestDefaultKeysNormal(t *testing.T) {
+	for _, x := range actions {
+		for _, k := range x.keys {
+			if got, err := normalizeKey(k); err != nil || got != k {
+				t.Errorf("%s.%s: %q normalises to %q, %v", x.ctx, x.name, k, got, err)
+			}
 		}
 	}
 }
@@ -388,6 +402,25 @@ func TestEscDropsResults(t *testing.T) {
 	}
 }
 
+// G in the results list goes to the last row, even when a line holds more
+// than one match.
+func TestResultsLastIsLastRow(t *testing.T) {
+	dir := fixture(t)
+	path := filepath.Join(dir, "a.md")
+	a := newTestApp(t, path)
+	p, req := a.pane, search.Request{Query: "text", Scope: search.Dir, Root: dir}
+	res := search.Result{Files: 1, Matches: []search.Match{
+		{Path: path, Line: 3, Text: "text text", Spans: [][2]int{{0, 4}, {5, 9}}},
+		{Path: path, Line: 5, Text: "text", Spans: [][2]int{{0, 4}}},
+	}}
+	a.seq++
+	a.update(searchDoneMsg{seq: a.seq, pane: p, req: req, res: res, pre: indexed(req, res.Matches, p.doc, p.view)})
+	press(a, "G")
+	if a.results.cursor != a.results.Len()-1 {
+		t.Fatalf("G: cursor %d of %d rows", a.results.cursor, a.results.Len())
+	}
+}
+
 func TestSearchOpenSearchesOpenFiles(t *testing.T) {
 	dir := fixture(t)
 	aPath, bPath := filepath.Join(dir, "a.md"), filepath.Join(dir, "b.md")
@@ -479,6 +512,25 @@ func TestBackgroundIndex(t *testing.T) {
 	p.setMatches(stale)
 	if stale.view != p.view || len(stale.occs) != 50 {
 		t.Fatal("a stale index should be rebuilt")
+	}
+}
+
+// A file-change refresh that finishes after a newer search for the same text
+// in another mode does not replace that search's matches.
+func TestStaleRefreshKeepsNewerMode(t *testing.T) {
+	dir := fixture(t)
+	path := filepath.Join(dir, "a.md")
+	a := newTestApp(t, path)
+	p := a.pane
+	res := search.Result{Matches: []search.Match{{Path: path, Line: 3, Text: "text", Spans: [][2]int{{0, 4}}}}}
+	old := search.Request{Query: "text", Scope: search.File, Root: path}
+	newer := old
+	newer.Mode.Literal = true
+	p.setMatches(indexed(newer, res.Matches, p.doc, p.view))
+	cur := p.match
+	a.update(searchDoneMsg{pane: p, req: old, res: res, pre: indexed(old, res.Matches, p.doc, p.view), purpose: searchRefresh})
+	if p.match != cur {
+		t.Fatal("a refresh for the old mode replaced the newer search")
 	}
 }
 

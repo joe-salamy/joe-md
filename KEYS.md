@@ -57,6 +57,7 @@ explains each feature.
 | `ctrl+w`        | delete the word before the cursor               | (fixed)                                |
 | `ctrl+u/k`      | delete to the start / end                       | (fixed)                                |
 | `ctrl+a/e`      | go to the start / end                           | (fixed)                                |
+| `ctrl+h/d`      | delete backwards / forwards                     | (fixed)                                |
 | `alt+b/f`       | a word left / right                             | (fixed)                                |
 
 ## Results list

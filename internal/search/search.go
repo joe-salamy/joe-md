@@ -260,7 +260,8 @@ func Run(parent context.Context, req Request) (Result, error) {
 			terms = append(terms, t)
 		}
 	}
-	if len(terms) == 0 {
+	if len(terms) == 0 || req.Scope == Open && len(req.Files) == 0 {
+		// With no files, ripgrep would search the working directory instead.
 		return Result{}, nil
 	}
 	if len(terms) > 1 {

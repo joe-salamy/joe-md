@@ -212,7 +212,7 @@ func (a *App) refreshSearch(p *Pane) tea.Cmd {
 
 func (a *App) searchDone(m searchDoneMsg) {
 	if m.purpose == searchRefresh {
-		if m.err == nil && a.livePane(m.pane) && m.pane.Query() == m.req.Query {
+		if m.err == nil && a.livePane(m.pane) && m.pane.match.from(m.req) {
 			m.pane.setMatches(m.pre)
 		}
 		return
@@ -299,8 +299,7 @@ func (a *App) nextMatch(n int) {
 // list is from the same search.
 func (a *App) syncResults() {
 	p, r := a.pane, a.results
-	if p == nil || p.match == nil || p.match.cur < 0 || r == nil ||
-		r.req.Query != p.match.query || r.req.Mode != p.match.mode {
+	if p == nil || r == nil || !p.match.from(r.req) || p.match.cur < 0 {
 		return
 	}
 	src, nth, _ := p.CurrentMatch()
@@ -480,8 +479,7 @@ func (a *App) inputWidth() int {
 // pane's matches came from a directory or repo search, or 0.
 func (a *App) crossTotal() int {
 	r := a.results
-	if r == nil || r.req.Scope == search.File || a.pane.match == nil ||
-		r.req.Query != a.pane.match.query || r.req.Mode != a.pane.match.mode {
+	if r == nil || r.req.Scope == search.File || !a.pane.match.from(r.req) {
 		return 0
 	}
 	return r.Len()

@@ -5,6 +5,8 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/joe-salamy/joe-md/internal/config"
 
@@ -104,28 +106,72 @@ func NewKeymap(changes map[string]map[string][]string) (*Keymap, error) {
 // sortedKeys returns m's keys in order, for stable error messages.
 func sortedKeys[V any](m map[string]V) []string { return slices.Sorted(maps.Keys(m)) }
 
-// normalizeKey tidies a key from the settings file: extra spaces go, and
-// "ctrl-d" becomes "ctrl+d" as tea spells it.
+// keyMods are tea's modifiers, in the order it spells them.
+var keyMods = []string{"ctrl", "alt", "shift", "meta", "hyper", "super"}
+
+// keyNames are the keys tea spells with a name rather than a character.
+var keyNames = func() map[string]bool {
+	out := map[string]bool{}
+	codes := []rune{tea.KeyEnter, tea.KeyTab, tea.KeyBackspace, tea.KeyEscape, tea.KeySpace}
+	for c := tea.KeyUp; c <= tea.KeyIsoLevel5Shift; c++ {
+		codes = append(codes, c)
+	}
+	for _, c := range codes {
+		if s := (tea.Key{Code: c}).Keystroke(); utf8.RuneCountInString(s) > 1 {
+			out[s] = true
+		}
+	}
+	return out
+}()
+
+// normalizeKey spells a key sequence from the settings file as tea does:
+// extra spaces go, and each key's modifiers are lowercased and put in tea's
+// order, so "Alt-Ctrl-d" becomes "ctrl+alt+d". A key tea never produces is
+// an error rather than a binding that silently never fires.
 func normalizeKey(k string) (string, error) {
 	parts := strings.Fields(k)
 	if len(parts) == 0 {
 		return "", fmt.Errorf("empty key")
 	}
 	for i, p := range parts {
-		for _, mod := range []string{"ctrl-", "alt-", "shift-", "super-"} {
-			for strings.HasPrefix(p, mod) && len(p) > len(mod) {
-				p = strings.TrimSuffix(mod, "-") + "+" + p[len(mod):]
-			}
+		p, err := normalizeKeystroke(p)
+		if err != nil {
+			return "", fmt.Errorf("%q: %w", k, err)
 		}
 		if len(p) == 1 && p[0] >= '0' && p[0] <= '9' && i == 0 {
 			return "", fmt.Errorf("%q: digits are counts", k)
 		}
-		if p == " " {
-			p = "space"
-		}
 		parts[i] = p
 	}
 	return strings.Join(parts, " "), nil
+}
+
+// normalizeKeystroke spells one key, modifiers joined by + or -, as tea does.
+func normalizeKeystroke(p string) (string, error) {
+	has := map[string]bool{}
+	for cut := true; cut; {
+		cut = false
+		for _, mod := range keyMods {
+			if len(p) > len(mod)+1 && strings.EqualFold(p[:len(mod)], mod) && (p[len(mod)] == '+' || p[len(mod)] == '-') {
+				has[mod], p, cut = true, p[len(mod)+1:], true
+			}
+		}
+	}
+	if r, n := utf8.DecodeRuneInString(p); n != len(p) || !unicode.IsGraphic(r) || unicode.IsSpace(r) {
+		if p = strings.ToLower(p); !keyNames[p] {
+			return "", fmt.Errorf("unknown key %q", p)
+		}
+	} else if len(has) > 0 {
+		p = strings.ToLower(p) // with modifiers tea spells the unshifted key
+	}
+	var sb strings.Builder
+	for _, mod := range keyMods {
+		if has[mod] {
+			sb.WriteString(mod + "+")
+		}
+	}
+	sb.WriteString(p)
+	return sb.String(), nil
 }
 
 // lookup finds what key sequence seq does in the contexts, in order: an
@@ -194,8 +240,8 @@ func (a *App) dispatch(pending *string, k string, count int, ctxs ...keyCtx) (te
 
 // windowKey is how the status line shows the pending window prefix.
 func (a *App) windowKey() string {
-	if p := a.keymap.Keys(ctxNormal, "window"); len(p) > 0 {
-		return displayKey(p[0])
+	if k := a.hint(ctxNormal, "window"); k != unbound {
+		return k
 	}
 	return "window"
 }
@@ -205,8 +251,11 @@ func (a *App) hint(ctx keyCtx, name string) string {
 	if k := a.keymap.Keys(ctx, name); len(k) > 0 {
 		return displayKey(k[0])
 	}
-	return "unbound"
+	return unbound
 }
+
+// unbound is the hint for an action with no keys.
+const unbound = "unbound"
 
 // displayKey shows a key sequence compactly: "g g" as gg, "ctrl+w v" as is.
 func displayKey(k string) string {
