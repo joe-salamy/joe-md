@@ -319,3 +319,28 @@ func TestRunCommonTermUnderLimit(t *testing.T) {
 		t.Fatalf("limit: %d matches, truncated %v, %v", len(res.Matches), res.Truncated, err)
 	}
 }
+
+// Ignored files are still searched: a directory search covers what the file
+// menu lists, matching the file scope's explicit paths, which ripgrep never
+// filters by ignore rules.
+func TestRunSearchesIgnoredFiles(t *testing.T) {
+	if _, err := exec.LookPath("rg"); err != nil {
+		t.Skip("rg not installed")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte("the lawyer rested\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("*.md\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A git repository so the ignore rule applies: bare .ignore files are
+	// not the case at issue.
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Run(context.Background(), Request{Query: "lawyer", Scope: Dir, Root: dir})
+	if err != nil || len(res.Matches) != 1 || res.Files != 1 {
+		t.Fatalf("dir search of an ignored file: %+v %v", res, err)
+	}
+}

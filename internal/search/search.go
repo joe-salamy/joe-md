@@ -373,9 +373,12 @@ func narrow(ctx context.Context, rg string, req Request, term string, ms []Match
 	return out, err
 }
 
-// args are ripgrep's options for searching the scope, or stdin.
+// args are ripgrep's options for searching the scope, or stdin. Ignored
+// files are always searched: the file menu lists them, so a cross-file
+// search must cover them too (an explicit file path bypasses ignores
+// anyway). Hidden files stay skipped.
 func args(req Request, stdin bool) []string {
-	out := []string{[...]string{"-i", "-S", "-s"}[req.Case]}
+	out := []string{[...]string{"-i", "-S", "-s"}[req.Case], "--no-ignore"}
 	switch {
 	case stdin:
 		out = append(out, "--text")
