@@ -41,6 +41,10 @@ type Search struct {
 	Scope   search.Scope `toml:"scope"` // where ? starts: file, open, dir or repo
 	Literal bool         `toml:"literal"`
 	Case    search.Case  `toml:"case"` // ignore, smart or sensitive
+	// Exclude skips these paths in dir/repo/open searches, as gitignore-style
+	// globs (rg -g '!pat'); file searches of an explicitly opened file are
+	// unaffected.
+	Exclude []string `toml:"exclude"`
 }
 
 type Menu struct {
@@ -146,6 +150,11 @@ func (c *Config) Check() error {
 			return fmt.Errorf("theme.%s %q: must be an ANSI colour 0-255, #rgb or #rrggbb", name, v)
 		}
 	}
+	for _, e := range c.Search.Exclude {
+		if e == "" {
+			return fmt.Errorf("search.exclude: entries must not be empty")
+		}
+	}
 	return nil
 }
 
@@ -194,7 +203,8 @@ func Template(bindings []Binding) string {
 		"# toc = %t\n# search_bar = %t\n# tabs = %t\n\n", d.Startup.TOC, d.Startup.SearchBar, d.Startup.Tabs)
 	fmt.Fprintf(&b, "[search]\n# Where ? starts: file, open, dir or repo. It then remembers the last scope used.\n# scope = %q\n"+
 		"# Match a query as one phrase of plain text, ignoring the spacing and inline\n# markup between its words, rather than as space-separated regexes; ctrl+r\n# toggles it.\n# literal = %t\n"+
-		"# Letter case: ignore (rg -i), smart (rg -S: sensitive if the query has capitals) or sensitive.\n# case = %q\n\n",
+		"# Letter case: ignore (rg -i), smart (rg -S: sensitive if the query has capitals) or sensitive.\n# case = %q\n"+
+		"# Skip these paths in dir/repo/open searches, as gitignore-style globs\n# (rg -g '!pat'), e.g. node_modules. A file opened explicitly is always searched.\n# exclude = []\n\n",
 		d.Search.Scope, d.Search.Literal, d.Search.Case)
 	fmt.Fprintf(&b, "[menu]\n# Hide files ignored by git; alt+. shows them dimmed.\n# hide_ignored = %t\n\n",
 		d.Menu.HideIgnored)

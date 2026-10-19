@@ -344,3 +344,34 @@ func TestRunSearchesIgnoredFiles(t *testing.T) {
 		t.Fatalf("dir search of an ignored file: %+v %v", res, err)
 	}
 }
+
+// Exclude globs skip matching paths in directory walks but never filter an
+// explicitly searched file: Request.Exclude becomes rg -g '!pat' args.
+func TestRunExcludeGlobs(t *testing.T) {
+	if _, err := exec.LookPath("rg"); err != nil {
+		t.Skip("rg not installed")
+	}
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		p := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	write("keep.md", "the lawyer rested\n")
+	write(filepath.Join("skipme", "drop.md"), "the lawyer rested\n")
+	res, err := Run(context.Background(), Request{Query: "lawyer", Scope: Dir, Root: dir, Exclude: []string{"skipme"}})
+	if err != nil || len(res.Matches) != 1 || res.Matches[0].Path != filepath.Join(dir, "keep.md") {
+		t.Fatalf("excluded dir still searched: %+v %v", res, err)
+	}
+	// An explicit file path bypasses globs, like ignores: a file search
+	// always covers the opened file.
+	res, err = Run(context.Background(), Request{Query: "lawyer", Scope: File, Root: filepath.Join(dir, "skipme", "drop.md"), Exclude: []string{"skipme"}})
+	if err != nil || len(res.Matches) != 1 {
+		t.Fatalf("file search of an excluded file: %+v %v", res, err)
+	}
+}

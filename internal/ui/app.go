@@ -28,10 +28,11 @@ type Options struct {
 	MenuDir     string // start with the file menu open here
 	HideIgnored bool   // start with git-ignored files hidden
 
-	Keymap *Keymap      // nil for the default keys
-	Colors config.Theme // colour changes; empty ones keep the defaults
-	Scope  search.Scope // scope ? starts in
-	Mode   search.Mode  // literal and case of searches
+	Keymap  *Keymap      // nil for the default keys
+	Colors  config.Theme // colour changes; empty ones keep the defaults
+	Scope   search.Scope // scope ? starts in
+	Mode    search.Mode  // literal and case of searches
+	Exclude []string     // paths dir/repo/open searches skip
 }
 
 type focus int
@@ -86,6 +87,7 @@ type App struct {
 	scope       search.Scope // scope of the search being typed
 	crossScope  search.Scope // scope ? starts in: the last cross-file scope used
 	mode        search.Mode  // literal and case for the next search
+	exclude     []string     // paths dir/repo/open searches skip (search.exclude)
 	history     []string
 	histIdx     int    // position while recalling history; len(history) when not
 	draft       string // what was typed before recalling history
@@ -110,6 +112,7 @@ func New(docs []*doc.Doc, opts Options) *App {
 		showBar:         !opts.NoBar,
 		crossScope:      opts.Scope,
 		mode:            opts.Mode,
+		exclude:         opts.Exclude,
 		menuHideIgnored: opts.HideIgnored,
 	}
 	if a.keymap == nil {

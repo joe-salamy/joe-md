@@ -129,7 +129,7 @@ func (a *App) submit() tea.Cmd {
 	if a.scope != search.File {
 		a.crossScope = a.scope
 	}
-	req := search.Request{Query: q, Mode: a.mode, Scope: a.scope, Root: search.Root(a.pane.doc.Path, a.scope)}
+	req := search.Request{Query: q, Mode: a.mode, Scope: a.scope, Root: search.Root(a.pane.doc.Path, a.scope), Exclude: a.exclude}
 	if a.scope == search.Open {
 		req.Files = a.openFiles()
 		if len(req.Files) == 1 {

@@ -93,10 +93,15 @@ func TestConfigParse(t *testing.T) {
 	if err != nil || c.Width != 90 || c.Startup.TOC || !c.Startup.Tabs || c.Search.Scope != search.Dir || !c.Search.Literal || c.Theme.Accent != "#ff8800" {
 		t.Fatalf("parse: %+v %v", c, err)
 	}
+	err = config.Parse([]byte("[search]\nexclude = [\"node_modules\", \"dist\"]\n"), &c)
+	if err != nil || len(c.Search.Exclude) != 2 || c.Search.Exclude[0] != "node_modules" {
+		t.Fatalf("exclude parse: %+v %v", c, err)
+	}
 	for _, bad := range []string{
 		"widht = 90",                 // unknown setting
 		"[search]\nscope = \"all\"",  // bad scope
 		"[search]\ncase = \"upper\"", // bad case
+		"[search]\nexclude = [\"\"]", // empty glob
 		"[theme]\naccent = \"blue\"", // bad colour
 		"width = \"wide\"",           // wrong type
 	} {

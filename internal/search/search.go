@@ -122,7 +122,11 @@ type Request struct {
 	Scope Scope
 	Root  string   // file or directory to search, from Root
 	Files []string // open files to search, for Open (absolute paths)
-	Limit int      // stop after this many matching lines; 0 means the default
+	// Exclude skips these paths in dir/repo/open walks, as gitignore-style
+	// globs (rg -g '!pat'). Explicit file paths are unaffected: ripgrep's
+	// globs never filter them.
+	Exclude []string
+	Limit   int // stop after this many matching lines; 0 means the default
 }
 
 // Default limits: a list of results across files is only useful up to a
@@ -384,6 +388,11 @@ func args(req Request, stdin bool) []string {
 		out = append(out, "--text")
 	case req.Scope != File && req.Scope != Open:
 		out = append(out, "-t", "markdown")
+	}
+	if !stdin {
+		for _, e := range req.Exclude {
+			out = append(out, "-g", "!"+e)
+		}
 	}
 	return out
 }

@@ -112,12 +112,13 @@ func main() {
 	app := ui.New(docs, ui.Options{
 		Style: cfg.Style, Dark: dark, MaxWrap: cfg.Width,
 		NoTOC: !cfg.Startup.TOC, NoBar: !cfg.Startup.SearchBar, NoTabs: !cfg.Startup.Tabs,
-		MenuDir: menuDir,
+		MenuDir:     menuDir,
 		HideIgnored: cfg.Menu.HideIgnored,
-		Keymap:  keymap,
-		Colors:  cfg.Theme,
-		Scope:   cfg.Search.Scope,
-		Mode:    search.Mode{Literal: cfg.Search.Literal, Case: cfg.Search.Case},
+		Keymap:      keymap,
+		Colors:      cfg.Theme,
+		Scope:       cfg.Search.Scope,
+		Mode:        search.Mode{Literal: cfg.Search.Literal, Case: cfg.Search.Case},
+		Exclude:     cfg.Search.Exclude,
 	})
 	if _, err := tea.NewProgram(app).Run(); err != nil {
 		fatal(err)
