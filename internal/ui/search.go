@@ -249,18 +249,22 @@ func (a *App) searchDone(m searchDoneMsg) {
 		a.syncResults()
 
 	default:
-		if len(matches) == 0 {
-			a.msg = "no matches for " + q + " in " + m.req.Scope.String()
-			return
-		}
+		// Even with no matches the new search replaces the old one: its
+		// results and highlights must not outlive it.
 		a.setResults(m.req, m.res)
-		a.showResults = true
-		a.focus = focusResults
-		a.layout()
+		if len(matches) > 0 {
+			a.showResults = true
+			a.focus = focusResults
+			a.layout()
+		}
 		if a.pane == p {
 			p.setMatches(m.pre)
 		} else {
 			a.pane.setMatches(newMatches(m.req, a.results.InFile(a.pane.doc.Path)))
+		}
+		if len(matches) == 0 {
+			a.msg = "no matches for " + q + " in " + m.req.Scope.String()
+			return
 		}
 		a.msg = plural(a.results.Len(), "match", "matches") + " in " + plural(m.res.Files, "file", "files")
 		if m.res.Truncated {

@@ -448,6 +448,32 @@ func TestSearchOpenSearchesOpenFiles(t *testing.T) {
 	}
 }
 
+func TestEmptyCrossSearchReplacesOldSearch(t *testing.T) {
+	dir := fixture(t)
+	a := newTestApp(t, filepath.Join(dir, "a.md"))
+	press(a, "/")
+	typeText(a, "text")
+	a.update(press(a, "enter")())
+	if a.pane.Query() != "text" || a.results == nil {
+		t.Fatalf("file search should highlight: query %q", a.pane.Query())
+	}
+	press(a, "/", "tab", "tab")
+	if a.scope != search.Dir {
+		t.Fatalf("tab tab should reach dir, got %v", a.scope)
+	}
+	typeText(a, "nowhere")
+	a.update(press(a, "enter")())
+	if q := a.pane.Query(); q != "nowhere" {
+		t.Fatalf("an empty dir search left the old search in the pane: %q", q)
+	}
+	if _, total := a.pane.MatchPos(); total != 0 {
+		t.Fatalf("old highlights survived: %d", total)
+	}
+	if a.showResults || a.results.req.Query != "nowhere" {
+		t.Fatalf("old results survived: show=%v query=%q", a.showResults, a.results.req.Query)
+	}
+}
+
 func TestEscInBarKillsRunningSearch(t *testing.T) {
 	dir := fixture(t)
 	a := newTestApp(t, filepath.Join(dir, "a.md"))
