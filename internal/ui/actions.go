@@ -462,8 +462,10 @@ func init() {
 					a.menu.err = "not in a git repository"
 				}
 			})},
-		&action{name: "toggle_all", desc: "show / hide hidden, ignored and non-markdown files", keys: keys("."),
-			run: do(func(a *App, c call) { a.menuAll = !a.menuAll; a.menu.refilter(a.menuAll, a.menuRows()) })},
+		&action{name: "toggle_all", desc: "show / hide hidden and non-markdown files", keys: keys("."),
+			run: do(func(a *App, c call) { a.menuAll = !a.menuAll; a.menu.refilter(a.menuAll, a.menuHideIgnored, a.menuRows()) })},
+		&action{name: "toggle_ignored", desc: "show / hide files ignored by git", keys: keys("alt+."),
+			run: do(func(a *App, c call) { a.menuHideIgnored = !a.menuHideIgnored; a.menu.refilter(a.menuAll, a.menuHideIgnored, a.menuRows()) })},
 		&action{name: "refresh", desc: "re-read the directory", keys: keys("r"),
 			run: do(func(a *App, c call) {
 				sel := ""
@@ -478,7 +480,7 @@ func init() {
 			run: func(a *App, c call) tea.Cmd {
 				if c.key == "esc" && a.menu.filter.Value() != "" {
 					a.menu.filter.SetValue("")
-					a.menu.refilter(a.menuAll, a.menuRows())
+					a.menu.refilter(a.menuAll, a.menuHideIgnored, a.menuRows())
 					return nil
 				}
 				if c.key == "esc" && len(a.menu.sel) > 0 {
@@ -495,13 +497,13 @@ func init() {
 		&action{name: "accept", desc: "stop filtering and open the selection", keys: keys("enter"),
 			run: func(a *App, c call) tea.Cmd { a.menu.stopFilter(); return a.menuActivate(openNewTab) }},
 		&action{name: "cancel", desc: "clear the filter and stop", keys: keys("esc"),
-			run: do(func(a *App, c call) { a.menu.stopFilter(); a.menu.setFilter("", a.menuAll, a.menuRows()) })},
+			run: do(func(a *App, c call) { a.menu.stopFilter(); a.menu.setFilter("", a.menuAll, a.menuHideIgnored, a.menuRows()) })},
 		&action{name: "clear", desc: "clear the filter (again to stop)", keys: keys("ctrl+c"),
 			run: do(func(a *App, c call) {
 				if a.menu.filter.Value() == "" {
 					a.menu.stopFilter()
 				} else {
-					a.menu.setFilter("", a.menuAll, a.menuRows())
+					a.menu.setFilter("", a.menuAll, a.menuHideIgnored, a.menuRows())
 				}
 			})},
 		&action{name: "down", desc: "next entry", row: "next / previous entry", keys: keys("down"),

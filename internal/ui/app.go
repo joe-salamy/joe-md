@@ -19,13 +19,14 @@ import (
 )
 
 type Options struct {
-	Style   string // glamour style name or JSON path
-	Dark    bool   // terminal has a dark background
-	MaxWrap int    // maximum word-wrap width
-	NoTOC   bool   // start with the sidebar hidden
-	NoBar   bool   // start with the search bar hidden
-	NoTabs  bool   // start with the tab bar hidden
-	MenuDir string // start with the file menu open here
+	Style       string // glamour style name or JSON path
+	Dark        bool   // terminal has a dark background
+	MaxWrap     int    // maximum word-wrap width
+	NoTOC       bool   // start with the sidebar hidden
+	NoBar       bool   // start with the search bar hidden
+	NoTabs      bool   // start with the tab bar hidden
+	MenuDir     string // start with the file menu open here
+	HideIgnored bool   // start with git-ignored files hidden
 
 	Keymap *Keymap      // nil for the default keys
 	Colors config.Theme // colour changes; empty ones keep the defaults
@@ -60,8 +61,9 @@ type App struct {
 	drag     *border   // pane border being dragged with the mouse
 	closed   []*closed // closed tabs and panes, newest last; see closed.go
 
-	menu    *Menu // the pop-up file menu, nil when closed; see menu.go
-	menuAll bool  // the menu lists hidden and non-markdown files too
+	menu            *Menu // the pop-up file menu, nil when closed; see menu.go
+	menuAll         bool  // the menu lists hidden and non-markdown files too
+	menuHideIgnored bool  // the menu hides files ignored by git
 
 	focus  focus
 	width  int
@@ -98,16 +100,17 @@ type App struct {
 // or with opts.MenuDir set, it starts with the file menu open.
 func New(docs []*doc.Doc, opts Options) *App {
 	a := &App{
-		opts:       opts,
-		theme:      newTheme(opts.Dark, opts.Style, opts.Colors),
-		renderer:   doc.NewRenderer(opts.Style),
-		keymap:     opts.Keymap,
-		showTOC:    !opts.NoTOC,
-		showTabs:   !opts.NoTabs,
-		input:      newInput(opts.Dark, ""), // setPlaceholder fills it in
-		showBar:    !opts.NoBar,
-		crossScope: opts.Scope,
-		mode:       opts.Mode,
+		opts:            opts,
+		theme:           newTheme(opts.Dark, opts.Style, opts.Colors),
+		renderer:        doc.NewRenderer(opts.Style),
+		keymap:          opts.Keymap,
+		showTOC:         !opts.NoTOC,
+		showTabs:        !opts.NoTabs,
+		input:           newInput(opts.Dark, ""), // setPlaceholder fills it in
+		showBar:         !opts.NoBar,
+		crossScope:      opts.Scope,
+		mode:            opts.Mode,
+		menuHideIgnored: opts.HideIgnored,
 	}
 	if a.keymap == nil {
 		a.keymap = DefaultKeymap()

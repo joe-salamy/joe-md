@@ -25,8 +25,8 @@ import (
 // scans one directory's names, which can't lag the way searching file
 // contents would.
 
-// Menu is the open pop-up's state. showAll lives on App so it survives
-// closing the menu.
+// Menu is the open pop-up's state. showAll and hideIgnored live on App so
+// they survive closing the menu.
 //
 // Multi-select marks files, like a file manager: shift extends the marks
 // from an anchor entry to the cursor, ctrl moves the cursor without touching
@@ -50,11 +50,12 @@ type Menu struct {
 }
 
 type entry struct {
-	name   string
-	dir    bool
-	parent bool // the ../ entry
-	hidden bool // a dotfile, or ignored by git
-	md     bool
+	name    string
+	dir     bool
+	parent  bool // the ../ entry
+	hidden  bool // a dotfile
+	ignored bool // ignored by git
+	md      bool
 }
 
 var markdownExts = map[string]bool{
@@ -109,9 +110,8 @@ func (a *App) menuLoad(dir, sel string) bool {
 	m.sel, m.ext = nil, nil // entries changed: every mark is stale
 	m.filter.SetValue("")
 	m.filtering = false
-	m.filter.Blur()
 	m.cursor, m.offset = 0, 0
-	m.refilter(a.menuAll, a.menuRows())
+	m.refilter(a.menuAll, a.menuHideIgnored, a.menuRows())
 	m.selectName(sel, a.menuRows())
 	return true
 }
@@ -137,7 +137,7 @@ func listDir(dir string) ([]entry, error) {
 	ignored := gitIgnored(dir, es)
 	for i := range es {
 		if ignored[es[i].name] {
-			es[i].hidden = true
+			es[i].ignored = true
 		}
 	}
 	slices.SortFunc(es, func(a, b entry) int {
@@ -187,7 +187,7 @@ func gitIgnored(dir string, es []entry) map[string]bool {
 // entry when it is still visible. Marks stay on entries that are still
 // shown; the extend range is dropped, so the next shift-move starts a new one
 // from the cursor.
-func (m *Menu) refilter(showAll bool, rows int) {
+func (m *Menu) refilter(showAll, hideIgnored bool, rows int) {
 	sel := ""
 	if e, ok := m.current(); ok {
 		sel = e.name
@@ -197,6 +197,8 @@ func (m *Menu) refilter(showAll bool, rows int) {
 	for i, e := range m.entries {
 		switch {
 		case e.parent && len(terms) > 0:
+			continue
+		case hideIgnored && !e.parent && e.ignored:
 			continue
 		case !showAll && !e.parent && (e.hidden || !e.dir && !e.md):
 			continue
@@ -444,7 +446,7 @@ func (a *App) menuKey(msg tea.KeyPressMsg) tea.Cmd {
 		before := m.filter.Value()
 		m.filter, cmd = m.filter.Update(msg)
 		if m.filter.Value() != before {
-			m.refilter(a.menuAll, a.menuRows())
+			m.refilter(a.menuAll, a.menuHideIgnored, a.menuRows())
 		}
 		return cmd
 	}
@@ -465,9 +467,9 @@ func (m *Menu) stopFilter() {
 	m.filter.Blur()
 }
 
-func (m *Menu) setFilter(s string, showAll bool, rows int) {
+func (m *Menu) setFilter(s string, showAll, hideIgnored bool, rows int) {
 	m.filter.SetValue(s)
-	m.refilter(showAll, rows)
+	m.refilter(showAll, hideIgnored, rows)
 }
 
 func (a *App) menuHome() {
@@ -535,8 +537,12 @@ func (a *App) menuView() []string {
 		if a.menuAll {
 			all = "md only"
 		}
+		ignored := "ignored"
+		if a.menuHideIgnored {
+			ignored = "tracked"
+		}
 		h := func(name string) string { return a.hint(ctxMenu, name) }
-		left = th.dim.Render(" " + h("toggle") + " mark · " + h("filter") + " filter · " + h("toggle_all") + " " + all + " · " + h("parent") + " up · " +
+		left = th.dim.Render(" " + h("toggle") + " mark · " + h("filter") + " filter · " + h("toggle_all") + " " + all + " · " + h("toggle_ignored") + " " + ignored + " · " + h("parent") + " up · " +
 			h("open_here") + " here · " + h("open_vsplit") + "/" + h("open_hsplit") + " split · " + h("close") + " close")
 	}
 	return drawBox(th, " "+title+" ", lines, left, right, w, h)
@@ -584,7 +590,7 @@ func (a *App) menuEntry(e entry, cursor, marked, open bool, width int) string {
 	}
 	style := th.menuFile
 	switch {
-	case e.hidden || !e.dir && !e.md:
+	case e.hidden || e.ignored || !e.dir && !e.md:
 		style = th.dim
 	case e.dir:
 		style = th.menuDir

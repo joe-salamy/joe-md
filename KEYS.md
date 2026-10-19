@@ -152,7 +152,8 @@ These follow the window prefix. A count before the prefix or after it resizes by
 | `h` `left` `-` `backspace`           | parent directory                                          | `menu.parent`                      |
 | `~` `gh`                             | home directory                                            | `menu.home`                        |
 | `gr`                                 | root of the git repository                                | `menu.repo_root`                   |
-| `.`                                  | show / hide hidden, ignored and non-markdown files        | `menu.toggle_all`                  |
+| `.`                                  | show / hide hidden and non-markdown files                 | `menu.toggle_all`                  |
+| `alt+.`                              | show / hide files ignored by git                          | `menu.toggle_ignored`              |
 | `r`                                  | re-read the directory                                     | `menu.refresh`                     |
 | `/`                                  | filter names                                              | `menu.filter`                      |
 | `esc` `q` `o` `ctrl+c`               | close the menu (esc clears the marks first)               | `menu.close`                       |

@@ -52,6 +52,7 @@ default).
 | `-no-toc`    | off     | start with the table of contents hidden             |
 | `-no-search-bar` | off | start with the search bar hidden (it still appears while typing) |
 | `-no-tabs`   | off     | start with the tab bar hidden                        |
+| `-hide-ignored` | off  | start with git-ignored files hidden                  |
 | `-config`    | see below | read this settings file instead (it must exist)    |
 | `-dump-config` |       | print a settings file with every setting at its default |
 | `-version`   |         | print the version                                    |
@@ -82,6 +83,9 @@ tabs = true
 scope = "dir"           # where ? starts: file, open, dir or repo
 literal = false         # one phrase of plain text, not regexes
 case = "smart"          # ignore (rg -i), smart (rg -S) or sensitive
+
+[menu]
+hide_ignored = false    # hide files ignored by git (alt+. toggles)
 
 [theme]                 # ANSI 0-255, "#rgb" or "#rrggbb"; see -dump-config for all
 accent = "#7aa2f7"
@@ -219,8 +223,9 @@ in it.
 
 `o` pops up a file browser at the current file's directory, with the cursor
 on that file. It lists one directory at a time, like lf: directories first,
-then markdown files. Hidden files, files ignored by git and other files are
-left out until you press `.`, which shows them dimmed. A `•` marks files
+then markdown files, including files ignored by git. Hidden files and other
+files are left out until you press `.`, which shows them dimmed. `alt+.`
+hides files ignored by git again. A `•` marks files
 that are already open, and a `+` marks the files you picked.
 
 | Key                          | Action                              |
@@ -236,7 +241,8 @@ that are already open, and a `+` marks the files you picked.
 | `h` `-` `backspace` `←`      | parent directory                    |
 | `~` `gh`                     | home directory                      |
 | `gr`                         | root of the git repository          |
-| `.`                          | show / hide hidden, ignored and non-markdown files |
+| `.`                          | show / hide hidden and non-markdown files |
+| `alt+.`                      | show / hide files ignored by git |
 | `/`                          | filter names (`enter` opens the selection, `esc` clears) |
 | `r`                          | re-read the directory               |
 | `esc` `q` `o`                | close the menu (`esc` clears the marks first) |
