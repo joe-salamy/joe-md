@@ -23,6 +23,7 @@ func main() {
 	noBar := flag.Bool("no-search-bar", false, "start with the search bar hidden (it still appears while typing a search)")
 	noTabs := flag.Bool("no-tabs", false, "start with the tab bar hidden")
 	hideIgnored := flag.Bool("hide-ignored", false, "start with git-ignored files hidden")
+	dimIgnored := flag.Bool("dim-ignored", false, "gray out git-ignored file names in the menu")
 	cfgPath := flag.String("config", "", "settings file (default "+config.Path()+")")
 	dump := flag.Bool("dump-config", false, "print a settings file with every setting at its default, and exit")
 	showVersion := flag.Bool("version", false, "print the version and exit")
@@ -66,6 +67,8 @@ func main() {
 			cfg.Startup.Tabs = !*noTabs
 		case "hide-ignored":
 			cfg.Menu.HideIgnored = *hideIgnored
+		case "dim-ignored":
+			cfg.Menu.DimIgnored = *dimIgnored
 		}
 	})
 	if err := cfg.Check(); err != nil {
@@ -114,6 +117,7 @@ func main() {
 		NoTOC: !cfg.Startup.TOC, NoBar: !cfg.Startup.SearchBar, NoTabs: !cfg.Startup.Tabs,
 		MenuDir:     menuDir,
 		HideIgnored: cfg.Menu.HideIgnored,
+		DimIgnored:  cfg.Menu.DimIgnored,
 		Keymap:      keymap,
 		Colors:      cfg.Theme,
 		Scope:       cfg.Search.Scope,

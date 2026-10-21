@@ -53,6 +53,7 @@ default).
 | `-no-search-bar` | off | start with the search bar hidden (it still appears while typing) |
 | `-no-tabs`   | off     | start with the tab bar hidden                        |
 | `-hide-ignored` | off  | start with git-ignored files hidden                  |
+| `-dim-ignored`  | off  | gray out git-ignored file names in the menu    |
 | `-config`    | see below | read this settings file instead (it must exist)    |
 | `-dump-config` |       | print a settings file with every setting at its default |
 | `-version`   |         | print the version                                    |
@@ -87,6 +88,7 @@ exclude = []            # skip these gitignore-style globs in dir/repo/open sear
 
 [menu]
 hide_ignored = false    # hide files ignored by git (alt+. toggles)
+dim_ignored = false     # gray out files ignored by git in the menu (d toggles)
 
 [theme]                 # ANSI 0-255, "#rgb" or "#rrggbb"; see -dump-config for all
 accent = "#7aa2f7"
@@ -226,8 +228,9 @@ in it.
 on that file. It lists one directory at a time, like lf: directories first,
 then markdown files, including files ignored by git. Hidden files and other
 files are left out until you press `.`, which shows them dimmed. `alt+.`
-hides files ignored by git again. A `•` marks files
-that are already open, and a `+` marks the files you picked.
+hides files ignored by git again. Press `d` to gray out the names of files
+ignored by git (off by default; `menu.dim_ignored` turns it on). A `•` marks
+files that are already open, and a `+` marks the files you picked.
 
 | Key                          | Action                              |
 |------------------------------|-------------------------------------|
@@ -244,6 +247,7 @@ that are already open, and a `+` marks the files you picked.
 | `gr`                         | root of the git repository          |
 | `.`                          | show / hide hidden and non-markdown files |
 | `alt+.`                      | show / hide files ignored by git |
+| `d`                                  | gray / un-gray files ignored by git |
 | `/`                          | filter names (`enter` opens the selection, `esc` clears) |
 | `r`                          | re-read the directory               |
 | `esc` `q` `o`                | close the menu (`esc` clears the marks first) |

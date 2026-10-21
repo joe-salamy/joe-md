@@ -541,8 +541,12 @@ func (a *App) menuView() []string {
 		if a.menuHideIgnored {
 			ignored = "tracked"
 		}
+		dim := "dim off"
+		if a.menuDimIgnored {
+			dim = "dim on"
+		}
 		h := func(name string) string { return a.hint(ctxMenu, name) }
-		left = th.dim.Render(" " + h("toggle") + " mark · " + h("filter") + " filter · " + h("toggle_all") + " " + all + " · " + h("toggle_ignored") + " " + ignored + " · " + h("parent") + " up · " +
+		left = th.dim.Render(" " + h("toggle") + " mark · " + h("filter") + " filter · " + h("toggle_all") + " " + all + " · " + h("toggle_ignored") + " " + ignored + " · " + h("toggle_dim") + " " + dim + " · " + h("parent") + " up · " +
 			h("open_here") + " here · " + h("open_vsplit") + "/" + h("open_hsplit") + " split · " + h("close") + " close")
 	}
 	return drawBox(th, " "+title+" ", lines, left, right, w, h)
@@ -590,7 +594,9 @@ func (a *App) menuEntry(e entry, cursor, marked, open bool, width int) string {
 	}
 	style := th.menuFile
 	switch {
-	case e.hidden || e.ignored || !e.dir && !e.md:
+	case e.hidden || !e.dir && !e.md:
+		style = th.dim
+	case e.ignored && a.menuDimIgnored:
 		style = th.dim
 	case e.dir:
 		style = th.menuDir

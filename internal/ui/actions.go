@@ -466,6 +466,8 @@ func init() {
 			run: do(func(a *App, c call) { a.menuAll = !a.menuAll; a.menu.refilter(a.menuAll, a.menuHideIgnored, a.menuRows()) })},
 		&action{name: "toggle_ignored", desc: "show / hide files ignored by git", keys: keys("alt+."),
 			run: do(func(a *App, c call) { a.menuHideIgnored = !a.menuHideIgnored; a.menu.refilter(a.menuAll, a.menuHideIgnored, a.menuRows()) })},
+		&action{name: "toggle_dim", desc: "gray / un-gray files ignored by git", keys: keys("d"),
+			run: do(func(a *App, c call) { a.menuDimIgnored = !a.menuDimIgnored })},
 		&action{name: "refresh", desc: "re-read the directory", keys: keys("r"),
 			run: do(func(a *App, c call) {
 				sel := ""

@@ -49,6 +49,7 @@ type Search struct {
 
 type Menu struct {
 	HideIgnored bool `toml:"hide_ignored"` // hide files ignored by git unless toggled
+	DimIgnored  bool `toml:"dim_ignored"`  // gray out files ignored by git in the menu
 }
 
 // Theme colours are ANSI numbers ("39") or hex ("#7aa2f7"); empty keeps the
@@ -206,8 +207,8 @@ func Template(bindings []Binding) string {
 		"# Letter case: ignore (rg -i), smart (rg -S: sensitive if the query has capitals) or sensitive.\n# case = %q\n"+
 		"# Skip these paths in dir/repo/open searches, as gitignore-style globs\n# (rg -g '!pat'), e.g. node_modules. A file opened explicitly is always searched.\n# exclude = []\n\n",
 		d.Search.Scope, d.Search.Literal, d.Search.Case)
-	fmt.Fprintf(&b, "[menu]\n# Hide files ignored by git; alt+. shows them dimmed.\n# hide_ignored = %t\n\n",
-		d.Menu.HideIgnored)
+fmt.Fprintf(&b, "[menu]\n# Hide files ignored by git; alt+. toggles.\n# hide_ignored = %t\n# Gray out the names of files ignored by git in the menu; d toggles.\n# dim_ignored = %t\n\n",
+	d.Menu.HideIgnored, d.Menu.DimIgnored)
 	b.WriteString(`[theme]
 # ANSI colours (0-255), "#rgb" or "#rrggbb". Unset colours follow the
 # style: dracula, tokyo-night and pink have matching UI colours; the others

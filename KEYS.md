@@ -154,6 +154,7 @@ These follow the window prefix. A count before the prefix or after it resizes by
 | `gr`                                 | root of the git repository                                | `menu.repo_root`                   |
 | `.`                                  | show / hide hidden and non-markdown files                 | `menu.toggle_all`                  |
 | `alt+.`                              | show / hide files ignored by git                          | `menu.toggle_ignored`              |
+| `d`                                  | gray / un-gray files ignored by git                       | `menu.toggle_dim`                  |
 | `r`                                  | re-read the directory                                     | `menu.refresh`                     |
 | `/`                                  | filter names                                              | `menu.filter`                      |
 | `esc` `q` `o` `ctrl+c`               | close the menu (esc clears the marks first)               | `menu.close`                       |

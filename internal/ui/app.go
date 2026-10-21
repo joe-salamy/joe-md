@@ -27,6 +27,7 @@ type Options struct {
 	NoTabs      bool   // start with the tab bar hidden
 	MenuDir     string // start with the file menu open here
 	HideIgnored bool   // start with git-ignored files hidden
+	DimIgnored  bool   // gray out git-ignored file names in the menu
 
 	Keymap  *Keymap      // nil for the default keys
 	Colors  config.Theme // colour changes; empty ones keep the defaults
@@ -65,6 +66,7 @@ type App struct {
 	menu            *Menu // the pop-up file menu, nil when closed; see menu.go
 	menuAll         bool  // the menu lists hidden and non-markdown files too
 	menuHideIgnored bool  // the menu hides files ignored by git
+	menuDimIgnored  bool  // the menu grays out files ignored by git
 
 	focus  focus
 	width  int
@@ -114,6 +116,7 @@ func New(docs []*doc.Doc, opts Options) *App {
 		mode:            opts.Mode,
 		exclude:         opts.Exclude,
 		menuHideIgnored: opts.HideIgnored,
+		menuDimIgnored:  opts.DimIgnored,
 	}
 	if a.keymap == nil {
 		a.keymap = DefaultKeymap()
