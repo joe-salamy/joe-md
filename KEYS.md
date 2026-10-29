@@ -14,7 +14,7 @@ explains each feature.
 | Key                                                | Action                         | Name                                     |
 |----------------------------------------------------|--------------------------------|------------------------------------------|
 | `j/k` `down/up`                                    | one line down / up             | `normal.scroll_down` / `scroll_up`       |
-| `ctrl+d/u`                                         | half a page down / up          | `normal.half_page_down` / `half_page_up` |
+| `ctrl+d/u` `d/u`                                   | half a page down / up          | `normal.half_page_down` / `half_page_up` |
 | `ctrl+f/b` `pgdown/pgup` `space/shift+space` `f/b` | a page down / up               | `normal.page_down` / `page_up`           |
 | `gg/G` `home/end`                                  | top / bottom, or source line n | `normal.top` / `bottom`                  |
 | `]]/[[` `}/{`                                      | next / previous heading        | `normal.next_heading` / `prev_heading`   |
@@ -65,7 +65,7 @@ explains each feature.
 | Key               | Action                                 | Name                                  |
 |-------------------|----------------------------------------|---------------------------------------|
 | `j/k` `down/up`   | next / previous result                 | `results.down` / `up`                 |
-| `ctrl+d/u`        | half a page down / up                  | `results.half_down` / `half_up`       |
+| `ctrl+d/u` `d/u`  | half a page down / up                  | `results.half_down` / `half_up`       |
 | `gg/G` `home/end` | first / last result, or result n       | `results.first` / `last`              |
 | `enter` `l`       | open in a new tab                      | `results.open`                        |
 | `O`               | open in the focused pane               | `results.open_here`                   |
@@ -115,7 +115,7 @@ These follow the window prefix. A count before the prefix or after it resizes by
 | Key                   | Action                                         | Name                        |
 |-----------------------|------------------------------------------------|-----------------------------|
 | `j/k` `down/up`       | next / previous heading (the document follows) | `toc.down` / `up`           |
-| `ctrl+d/u`            | half a page down / up                          | `toc.half_down` / `half_up` |
+| `ctrl+d/u` `d/u`      | half a page down / up                          | `toc.half_down` / `half_up` |
 | `gg/G` `home/end`     | first / last heading, or heading n             | `toc.first` / `last`        |
 | `enter` `l` `esc` `h` | back to the document                           | `toc.back`                  |
 
@@ -139,7 +139,7 @@ These follow the window prefix. A count before the prefix or after it resizes by
 | Key                                  | Action                                                    | Name                               |
 |--------------------------------------|-----------------------------------------------------------|------------------------------------|
 | `j/k` `down/up`                      | next / previous entry                                     | `menu.down` / `up`                 |
-| `ctrl+d/u` `pgdown/pgup`             | half a page down / up                                     | `menu.half_down` / `half_up`       |
+| `ctrl+d/u` `d/u` `pgdown/pgup`       | half a page down / up                                     | `menu.half_down` / `half_up`       |
 | `gg/G` `home/end`                    | first / last entry                                        | `menu.first` / `last`              |
 | `shift+j/k` `shift+down/up` `J/K`    | mark to the next / previous entry                         | `menu.down_extend` / `up_extend`   |
 | `ctrl+j/k` `ctrl+n/p` `ctrl+down/up` | next / previous entry, keeping the marks                  | `menu.down_keep` / `up_keep`       |
@@ -154,7 +154,7 @@ These follow the window prefix. A count before the prefix or after it resizes by
 | `gr`                                 | root of the git repository                                | `menu.repo_root`                   |
 | `.`                                  | show / hide hidden and non-markdown files                 | `menu.toggle_all`                  |
 | `alt+.`                              | show / hide files ignored by git                          | `menu.toggle_ignored`              |
-| `d`                                  | gray / un-gray files ignored by git                       | `menu.toggle_dim`                  |
+| `i`                                  | gray / un-gray files ignored by git                       | `menu.toggle_dim`                  |
 | `r`                                  | re-read the directory                                     | `menu.refresh`                     |
 | `/`                                  | filter names                                              | `menu.filter`                      |
 | `esc` `q` `o` `ctrl+c`               | close the menu (esc clears the marks first)               | `menu.close`                       |
@@ -173,13 +173,13 @@ Other keys edit the filter, which matches as you type; the search bar's line-edi
 
 ## Help overlay
 
-| Key                                           | Action                                       | Name                         |
-|-----------------------------------------------|----------------------------------------------|------------------------------|
-| `j/k` `down/up`                               | scroll down / up                             | `help.down` / `up`           |
-| `ctrl+d/u` `ctrl+f/b` `pgdown/pgup` `space/b` | a page down / up                             | `help.page_down` / `page_up` |
-| `gg/G` `home/end`                             | top / bottom                                 | `help.top` / `bottom`        |
-| `/`                                           | search the keys                              | `help.search`                |
-| `esc` `q` `f1` `g?`                           | close the help (esc clears the search first) | `help.close`                 |
+| Key                                                 | Action                                       | Name                         |
+|-----------------------------------------------------|----------------------------------------------|------------------------------|
+| `j/k` `down/up`                                     | scroll down / up                             | `help.down` / `up`           |
+| `ctrl+d/u` `d/u` `ctrl+f/b` `pgdown/pgup` `space/b` | a page down / up                             | `help.page_down` / `page_up` |
+| `gg/G` `home/end`                                   | top / bottom                                 | `help.top` / `bottom`        |
+| `/`                                                 | search the keys                              | `help.search`                |
+| `esc` `q` `f1` `g?`                                 | close the help (esc clears the search first) | `help.close`                 |
 
 ## Help search
 

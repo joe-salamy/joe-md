@@ -332,6 +332,26 @@ func TestPercentPastEnd(t *testing.T) {
 	}
 }
 
+func TestDUHalfPage(t *testing.T) {
+	dir := t.TempDir()
+	var sb strings.Builder
+	for i := range 200 {
+		sb.WriteString("para " + string(rune('a'+i%26)) + "\n\n")
+	}
+	path := filepath.Join(dir, "p.md")
+	os.WriteFile(path, []byte(sb.String()), 0o644)
+	a := newTestApp(t, path)
+	half := max(a.bodyHeight()/2, 1)
+	press(a, "d")
+	if a.pane.offset != half {
+		t.Fatalf("d: offset %d, want %d", a.pane.offset, half)
+	}
+	press(a, "d", "u")
+	if a.pane.offset != half {
+		t.Fatalf("d u: offset %d, want %d", a.pane.offset, half)
+	}
+}
+
 func TestScrollBindSourceLines(t *testing.T) {
 	dir := t.TempDir()
 	var short, long strings.Builder

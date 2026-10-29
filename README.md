@@ -88,7 +88,7 @@ exclude = []            # skip these gitignore-style globs in dir/repo/open sear
 
 [menu]
 hide_ignored = false    # hide files ignored by git (alt+. toggles)
-dim_ignored = false     # gray out files ignored by git in the menu (d toggles)
+dim_ignored = false     # gray out files ignored by git in the menu (i toggles)
 
 [theme]                 # ANSI 0-255, "#rgb" or "#rrggbb"; see -dump-config for all
 accent = "#7aa2f7"
@@ -134,7 +134,7 @@ keys; `enter` keeps the filter), `esc` clears the search, then closes; `q` close
 | Key                          | Action                              |
 |------------------------------|-------------------------------------|
 | `j` `k` `↓` `↑`              | scroll one line                     |
-| `ctrl+d` `ctrl+u`            | half page down / up                 |
+| `d` `u` `ctrl+d` `ctrl+u`    | half page down / up                 |
 | `ctrl+f` `ctrl+b` `space` `b` | page down / up                     |
 | `gg` `G`                     | top / bottom                        |
 | `{n}G` `{n}gg`               | go to source line *n*               |
@@ -229,13 +229,13 @@ in it.
 on that file. It lists one directory at a time, like lf: directories first,
 then markdown files, including files ignored by git. Hidden files and other
 files are left out until you press `.`, which shows them dimmed. `alt+.`
-hides files ignored by git again. Press `d` to gray out the names of files
+hides files ignored by git again. Press `i` to gray out the names of files
 ignored by git (off by default; `menu.dim_ignored` turns it on). A `•` marks
 files that are already open, and the files you picked are highlighted.
 
 | Key                          | Action                              |
 |------------------------------|-------------------------------------|
-| `j` `k` `ctrl+d` `ctrl+u`    | move                                |
+| `j` `k` `d` `u` `ctrl+d` `ctrl+u` | move                                |
 | `shift+j` `shift+k` (`J` `K`) | mark to the next / previous entry   |
 | `ctrl+j` `ctrl+k`            | move, keeping the marks             |
 | `space` `t`                  | mark / unmark the file              |
@@ -248,7 +248,7 @@ files that are already open, and the files you picked are highlighted.
 | `gr`                         | root of the git repository          |
 | `.`                          | show / hide hidden and non-markdown files |
 | `alt+.`                      | show / hide files ignored by git |
-| `d`                                  | gray / un-gray files ignored by git |
+| `i`                          | gray / un-gray files ignored by git |
 | `/`                          | filter names (`enter` opens the selection, `esc` clears) |
 | `r`                          | re-read the directory               |
 | `esc` `q` `o`                | close the menu (`esc` clears the marks first) |
