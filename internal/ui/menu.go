@@ -296,10 +296,13 @@ func (m *Menu) move(i, rows int) {
 }
 
 // moveKeep puts the cursor on shown position i, leaving the marks alone.
-// Moves with ctrl held go through here.
+// Moves with ctrl held go through here. The marks so far become fixed and
+// the next extend starts at the new cursor, so ctrl then shift adds a second
+// range instead of stretching the first one over the files ctrl skipped.
 func (m *Menu) moveKeep(i, rows int) {
-	m.clampAnchor()
+	m.ext = nil
 	m.selectIdx(i, rows)
+	m.anchor = m.cursor
 }
 
 // extend puts the cursor on shown position i and marks every file from the
@@ -574,23 +577,30 @@ func (a *App) filterWidth() int {
 	return max(w-2-ansi.StringWidth(widest)-4, 1)
 }
 
+// menuEntry draws one row. Marked files get a full-width highlight, like a
+// file manager's selection; the cursor row is drawn in the stronger cursor
+// colour, underlined when the file under it is also marked, so a ctrl move
+// shows the cursor leaving the marks behind.
 func (a *App) menuEntry(e entry, cursor, marked, open bool, width int) string {
 	th := a.theme
-	mark, glyph := "  ", "  "
+	glyph := "  "
 	if open {
 		glyph = "• "
-	}
-	if marked {
-		mark = "+ "
 	}
 	name := e.name
 	if e.dir {
 		name += "/"
 	}
-	text := " " + mark + glyph + name
-	if cursor {
-		text = ansi.Truncate(text, width, "…")
-		return th.tocCursor.Render(text + strings.Repeat(" ", max(width-ansi.StringWidth(text), 0)))
+	if cursor || marked {
+		style := th.menuMark
+		switch {
+		case cursor && marked:
+			style = th.menuMarkCursor
+		case cursor:
+			style = th.tocCursor
+		}
+		text := ansi.Truncate(" "+glyph+name, width, "…")
+		return style.Render(text + strings.Repeat(" ", max(width-ansi.StringWidth(text), 0)))
 	}
 	style := th.menuFile
 	switch {
@@ -601,7 +611,7 @@ func (a *App) menuEntry(e entry, cursor, marked, open bool, width int) string {
 	case e.dir:
 		style = th.menuDir
 	}
-	return th.menuOpen.Render(" "+mark+glyph) + style.Render(ansi.Truncate(name, max(width-5, 1), "…"))
+	return th.menuOpen.Render(" "+glyph) + style.Render(ansi.Truncate(name, max(width-3, 1), "…"))
 }
 
 // menuMouse handles the mouse while the menu is open: the wheel scrolls it,

@@ -23,7 +23,8 @@ type theme struct {
 
 	tabActive, tabInactive, tabFill          lipgloss.Style
 	menuBorder, menuTitle, menuDir, menuFile lipgloss.Style
-	menuOpen, menuErr                        lipgloss.Style
+	menuOpen, menuErr, menuMark              lipgloss.Style
+	menuMarkCursor                           lipgloss.Style
 }
 
 func (th theme) tocLevel(depth int) lipgloss.Style {
@@ -57,6 +58,7 @@ func newTheme(dark bool, style string, colors config.Theme) theme {
 	tabInactive := c(colors.TabInactive, "252", "238")
 	errColor := c(colors.Error, "160", "203")
 	cursorText := c(p.cursorText, "255", "255")
+	selection := ld(lipgloss.Color("153"), lipgloss.Color("24"))
 	matchText := c(p.matchText, "16", "16")
 	s := lipgloss.NewStyle
 	return theme{
@@ -97,5 +99,8 @@ func newTheme(dark bool, style string, colors config.Theme) theme {
 		menuFile:   s().Foreground(fg),
 		menuOpen:   s().Foreground(searchMode),
 		menuErr:    s().Foreground(errColor),
+		// Marked files: a quieter highlight than the cursor's.
+		menuMark:       s().Foreground(fg).Background(selection),
+		menuMarkCursor: s().Foreground(cursorText).Background(accent).Bold(true).Underline(true),
 	}
 }

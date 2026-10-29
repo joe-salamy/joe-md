@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -122,6 +123,31 @@ func TestMenuCtrlKeepsAndPlainClears(t *testing.T) {
 	press(a, "esc")
 	if a.menu != nil {
 		t.Fatal("second esc should close the menu")
+	}
+}
+
+// Ctrl then shift adds a second range: the files ctrl moved over stay
+// unmarked rather than joining a range stretched from the first anchor.
+func TestMenuCtrlThenShiftAddsRange(t *testing.T) {
+	dir := t.TempDir()
+	for _, n := range []string{"a", "b", "c", "d", "e", "f"} {
+		if err := os.WriteFile(filepath.Join(dir, n+".md"), []byte("# "+n+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a := newTestApp(t, filepath.Join(dir, "a.md"))
+	press(a, "o")
+	openMenuAt(a, "a.md")
+	mkey(a, 'j', "", tea.ModShift)        // a b
+	mkey(a, 'n', "", tea.ModCtrl)         // onto c
+	mkey(a, tea.KeyDown, "", tea.ModCtrl) // onto d
+	mkey(a, 'j', "", tea.ModShift)        // d e
+	if got := markedNames(a); got != "a.md b.md d.md e.md" {
+		t.Fatalf("marks %q", got)
+	}
+	mkey(a, 'k', "", tea.ModShift) // shrinking the new range keeps the old one
+	if got := markedNames(a); got != "a.md b.md d.md" {
+		t.Fatalf("after shrinking: marks %q", got)
 	}
 }
 

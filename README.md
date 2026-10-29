@@ -230,7 +230,7 @@ then markdown files, including files ignored by git. Hidden files and other
 files are left out until you press `.`, which shows them dimmed. `alt+.`
 hides files ignored by git again. Press `d` to gray out the names of files
 ignored by git (off by default; `menu.dim_ignored` turns it on). A `•` marks
-files that are already open, and a `+` marks the files you picked.
+files that are already open, and the files you picked are highlighted.
 
 | Key                          | Action                              |
 |------------------------------|-------------------------------------|
@@ -253,8 +253,10 @@ files that are already open, and a `+` marks the files you picked.
 | `esc` `q` `o`                | close the menu (`esc` clears the marks first) |
 
 Only files can be marked; moving without `shift` or `ctrl` clears the marks.
-`enter` opens every marked file (plus the one under the cursor), each in its
-own tab. `esc` clears the marks before it closes the menu.
+After a `ctrl` move, `shift` starts a new range from the cursor and keeps the
+marks you already have. `enter` opens every marked file (plus the one under
+the cursor), each in its own tab. `esc` clears the marks before it closes the
+menu.
 
 The filter matches as you type. That is safe here, unlike searching file
 contents, because it only compares the names in one directory. Space-separated
