@@ -28,34 +28,29 @@ func TestFindTerms(t *testing.T) {
 	}
 }
 
-func TestFindPatterns(t *testing.T) {
-	pats, err := search.Request{Query: `\bup\b 日本`}.Patterns()
+func TestFindPattern(t *testing.T) {
+	re, err := search.Request{Query: `\bup\b|日本`}.Pattern()
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Cells, not bytes: the wide characters take two cells each. Each
 	// occurrence is its own, in order.
-	got := findPatterns([]string{"setup 日本 Up 日本"}, pats)
+	got := findPattern([]string{"setup 日本 Up 日本"}, re)
 	want := [][]piece{{{0, 6, 10}}, {{0, 11, 13}}, {{0, 14, 18}}}
 	if !slices.EqualFunc(got, want, slices.Equal) {
 		t.Fatalf("got %v want %v", got, want)
 	}
 	// Empty matches are not highlights.
-	pats, _ = search.Request{Query: "x*"}.Patterns()
-	if got := findPatterns([]string{"abc"}, pats); len(got) != 0 {
+	re, _ = search.Request{Query: "x*"}.Pattern()
+	if got := findPattern([]string{"abc"}, re); len(got) != 0 {
 		t.Fatalf("empty matches: %v", got)
-	}
-	// Two terms matching the same text are one occurrence.
-	pats, _ = search.Request{Query: "ab a."}.Patterns()
-	if got := findPatterns([]string{"ab ab"}, pats); len(got) != 2 {
-		t.Fatalf("same text: %v", got)
 	}
 }
 
 // A phrase that wraps is highlighted on both lines, less the padding at the
 // end of the first and the indent of the second.
-func TestFindPatternsAcrossWrap(t *testing.T) {
-	pats, err := search.Request{Query: "one fixed string", Mode: search.Mode{Literal: true}}.Patterns()
+func TestFindPatternAcrossWrap(t *testing.T) {
+	re, err := search.Request{Query: "one fixed string", Mode: search.Mode{Literal: true}}.Pattern()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +59,7 @@ func TestFindPatternsAcrossWrap(t *testing.T) {
 		"  string, and one\u00a0fixed\u00a0",
 		"  string here",
 	}
-	got := findPatterns(lines, pats)
+	got := findPattern(lines, re)
 	want := [][]piece{
 		{{0, 6, 15}, {1, 2, 8}},
 		{{1, 14, 23}, {2, 2, 8}},

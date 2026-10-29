@@ -1,7 +1,7 @@
-// Package search runs ripgrep and parses its JSON output. A regex query holds
-// space-separated terms; a line matches only if every term does. A literal
-// query is one phrase, matched with any whitespace or inline markup between
-// its words.
+// Package search runs ripgrep and parses its JSON output. A query is one
+// pattern either way: in literal mode a phrase, matched with any whitespace
+// or inline markup between its words and with straight and curly quotes and
+// the dash forms alike; in regex mode a single regex.
 package search
 
 import (
@@ -13,16 +13,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
-	"sync"
 	"unicode"
 
 	"github.com/joe-salamy/joe-md/internal/natural"
@@ -111,13 +107,13 @@ func unmarshalName[T ~int](v *T, what string, names []string, b []byte) error {
 
 // Mode is how a query is matched.
 type Mode struct {
-	Literal bool // a fixed string (rg -F), not a regex
+	Literal bool // a phrase of plain text (see phrase), not a regex
 	Case    Case
 }
 
 // Request is one search.
 type Request struct {
-	Query string // see Terms
+	Query string // see Term
 	Mode
 	Scope Scope
 	Root  string   // file or directory to search, from Root
@@ -161,60 +157,74 @@ type Result struct {
 	Truncated bool    // Limit was hit
 }
 
-// Terms splits the query into the terms that must all match a line. A regex
-// query splits on spaces; a literal query is one phrase, trimmed.
-func (r Request) Terms() []string {
-	if r.Literal {
-		if q := strings.TrimSpace(r.Query); q != "" {
-			return []string{q}
-		}
-		return nil
+// Term is the query as ripgrep runs it: trimmed, and otherwise whole, so
+// spaces in a regex are part of it.
+func (r Request) Term() string { return strings.TrimSpace(r.Query) }
+
+// Pattern compiles the query as a Go regexp that matches what ripgrep would,
+// so matches can be found again in text ripgrep never saw, or nil for an
+// empty query. Go's syntax is close to ripgrep's but not identical; a query
+// Go can't compile is an error. The pattern is multi-line, so ^ and $ still
+// match at each line of a text holding several.
+func (r Request) Pattern() (*regexp.Regexp, error) {
+	t := r.Term()
+	if t == "" {
+		return nil, nil
 	}
-	return strings.Fields(r.Query)
+	expr := "(?m)" + r.expr()
+	if r.Case == IgnoreCase || r.Case == SmartCase && !hasUpper(t, r.Literal) {
+		expr = "(?i)" + expr
+	}
+	return regexp.Compile(expr)
 }
 
-// Patterns compiles each term as a Go regexp that matches what ripgrep would,
-// so matches can be found again in text ripgrep never saw. Go's syntax is
-// close to ripgrep's but not identical; a term Go can't compile is an error.
-// The patterns are multi-line, so ^ and $ still match at each line of a text
-// holding several.
-func (r Request) Patterns() ([]*regexp.Regexp, error) {
-	var out []*regexp.Regexp
-	for _, t := range r.Terms() {
-		expr := "(?m)" + r.expr(t)
-		if r.Case == IgnoreCase || r.Case == SmartCase && !hasUpper(t, r.Literal) {
-			expr = "(?i)" + expr
-		}
-		re, err := regexp.Compile(expr)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, re)
-	}
-	return out, nil
-}
-
-// expr is the regexp ripgrep runs for term: the term itself, or for a
-// literal query its phrase (see phrase).
-func (r Request) expr(term string) string {
+// expr is the regexp ripgrep runs: the term itself, or for a literal query
+// its phrase (see phrase).
+func (r Request) expr() string {
 	if r.Literal {
-		return phrase(term)
+		return phrase(r.Term())
 	}
-	return term
+	return r.Term()
 }
 
 // Inline markup that may sit next to the spaces of a phrase: emphasis and
 // code marks, link brackets and targets, and HTML tags.
 const markup = "(?:[*_~`]|\\[|\\]\\([^)]*\\)|\\]|<[^>]*>)*"
 
+// folds are the characters a phrase treats as the same: typographic quotes
+// and dashes stand in for the ' " and - people type.
+var folds = []string{"'‘’‚‛ʼ′", "\"“”„‟″", "-‐‑‒–—―−"}
+
 // phrase is the regexp for literal phrase q: its words, quoted, with any
 // whitespace between them (a no-break space included), and markup allowed on
 // either side of it, so `one **fixed** string` matches "one fixed string".
-// The syntax is common to Go and ripgrep.
+// A character in folds matches any of its look-alikes. The syntax is common
+// to Go and ripgrep.
 func phrase(q string) string {
 	words := strings.Fields(q)
 	for i, w := range words {
-		words[i] = regexp.QuoteMeta(w)
+		var b strings.Builder
+		for _, c := range w {
+			f := ""
+			for _, s := range folds {
+				if strings.ContainsRune(s, c) {
+					f = s
+				}
+			}
+			if f == "" {
+				b.WriteString(regexp.QuoteMeta(string(c)))
+				continue
+			}
+			b.WriteByte('[')
+			for _, l := range f {
+				if l == '-' {
+					b.WriteByte('\\')
+				}
+				b.WriteRune(l)
+			}
+			b.WriteByte(']')
+		}
+		words[i] = b.String()
 	}
 	return strings.Join(words, markup+"[\\s\\x{a0}]+"+markup)
 }
@@ -238,13 +248,7 @@ func hasUpper(term string, literal bool) bool {
 
 // Run searches with ripgrep. Directory scopes only search markdown files; a
 // single file, and the open scope's explicit files, are searched whatever
-// their extension. The terms (see Terms) are ANDed: a line matches only if
-// every term matches it, and then carries the spans of every term, so the
-// results list and the pane highlight them all.
-//
-// The rarest term searches the scope, and the lines it finds go in batches
-// through the other terms (see narrow), so the search reads the files once
-// and stops as soon as more than the limit of lines match every term.
+// their extension. It stops as soon as more than the limit of lines match.
 func Run(parent context.Context, req Request) (Result, error) {
 	rg, err := exec.LookPath("rg")
 	if err != nil {
@@ -258,166 +262,55 @@ func Run(parent context.Context, req Request) (Result, error) {
 	default:
 		limit = DefaultLimit
 	}
-	var terms []string
-	for _, t := range req.Terms() {
-		if !slices.Contains(terms, t) {
-			terms = append(terms, t)
-		}
-	}
-	if len(terms) == 0 || req.Scope == Open && len(req.Files) == 0 {
+	if req.Term() == "" || req.Scope == Open && len(req.Files) == 0 {
 		// With no files, ripgrep would search the working directory instead.
 		return Result{}, nil
 	}
-	if len(terms) > 1 {
-		terms = byRarity(parent, rg, req, terms)
-	}
-
-	ctx, cancel := context.WithCancel(parent)
-	defer cancel()
-	var out, batch []Match
-	flush := func() error {
-		ms := batch
-		batch = nil
-		var err error
-		for _, t := range terms[1:] {
-			if len(ms) == 0 {
-				break
-			}
-			if ms, err = narrow(ctx, rg, req, t, ms); err != nil {
-				return err
-			}
-		}
-		out = append(out, ms...)
-		return nil
-	}
-	var flushErr error
-	err = stream(ctx, rg, req, terms[0], nil, func(m Match) bool {
-		batch = append(batch, m)
-		if len(batch) == narrowBatch || len(terms) == 1 {
-			flushErr = flush()
-		}
-		return flushErr == nil && len(out) <= limit
+	var out []Match
+	err = stream(parent, rg, req, func(m Match) bool {
+		out = append(out, m)
+		return len(out) <= limit
 	})
-	if err == nil && flushErr == nil && len(out) <= limit {
-		flushErr = flush()
-	}
 	if err := parent.Err(); err != nil {
 		return Result{}, err // superseded by a newer search
 	}
 	if err != nil {
 		return Result{}, err
 	}
-	if flushErr != nil {
-		return Result{}, flushErr
-	}
 	return finish(out, limit), nil
 }
 
-// narrowBatch is how many lines of the first term go through the others at
-// once: enough that few ripgrep runs are needed, few enough that a search
-// of common terms stops soon after it has enough.
-const narrowBatch = 8192
-
-// byRarity orders terms by how many lines each matches, fewest first,
-// counting them all at once. A term that fails to count goes last; the
-// search proper reports its error.
-func byRarity(ctx context.Context, rg string, req Request, terms []string) []string {
-	counts := make([]int, len(terms))
-	var wg sync.WaitGroup
-	for i, t := range terms {
-		wg.Go(func() { counts[i] = count(ctx, rg, req, t) })
-	}
-	wg.Wait()
-	idx := make([]int, len(terms))
-	for i := range idx {
-		idx[i] = i
-	}
-	slices.SortStableFunc(idx, func(a, b int) int { return cmp.Compare(counts[a], counts[b]) })
-	out := make([]string, len(terms))
-	for i, j := range idx {
-		out[i] = terms[j]
-	}
-	return out
-}
-
-// count is how many lines term matches in the scope, or MaxInt on an error.
-func count(ctx context.Context, rg string, req Request, term string) int {
-	cmdArgs := append(append(args(req, false), "--count", "--no-filename", "--", req.expr(term)), paths(req, false)...)
-	out, err := exec.CommandContext(ctx, rg, cmdArgs...).Output()
-	var exit *exec.ExitError
-	if err != nil && !(errors.As(err, &exit) && exit.ExitCode() == 1) {
-		return math.MaxInt
-	}
-	n := 0
-	for _, f := range strings.Fields(string(out)) {
-		c, _ := strconv.Atoi(f)
-		n += c
-	}
-	return n
-}
-
-// narrow keeps the lines of ms that term matches too, adding its spans. The
-// lines' text goes to ripgrep on stdin, so term matches exactly as it would
-// in the files, which aren't read again.
-func narrow(ctx context.Context, rg string, req Request, term string, ms []Match) ([]Match, error) {
-	var in bytes.Buffer
-	for _, m := range ms {
-		in.WriteString(m.Text)
-		in.WriteByte('\n')
-	}
-	var out []Match
-	err := stream(ctx, rg, req, term, &in, func(h Match) bool {
-		if h.Line >= 1 && h.Line <= len(ms) {
-			m := ms[h.Line-1] // stdin's line n is the n-th candidate
-			m.Spans = append(slices.Clip(m.Spans), h.Spans...)
-			out = append(out, m)
-		}
-		return true
-	})
-	return out, err
-}
-
-// args are ripgrep's options for searching the scope, or stdin. Ignored
-// files are always searched: the file menu lists them, so a cross-file
-// search must cover them too (an explicit file path bypasses ignores
-// anyway). Hidden files stay skipped.
-func args(req Request, stdin bool) []string {
+// args are ripgrep's options for searching the scope. Ignored files are
+// always searched: the file menu lists them, so a cross-file search must
+// cover them too (an explicit file path bypasses ignores anyway). Hidden
+// files stay skipped.
+func args(req Request) []string {
 	out := []string{[...]string{"-i", "-S", "-s"}[req.Case], "--no-ignore"}
-	switch {
-	case stdin:
-		out = append(out, "--text")
-	case req.Scope != File && req.Scope != Open:
+	if req.Scope != File && req.Scope != Open {
 		out = append(out, "-t", "markdown")
 	}
-	if !stdin {
-		for _, e := range req.Exclude {
-			out = append(out, "-g", "!"+e)
-		}
+	for _, e := range req.Exclude {
+		out = append(out, "-g", "!"+e)
 	}
 	return out
 }
 
-// paths are what ripgrep searches for req: stdin, the open files, or the root.
-func paths(req Request, stdin bool) []string {
-	switch {
-	case stdin:
-		return []string{"-"}
-	case req.Scope == Open:
+// paths are what ripgrep searches for req: the open files, or the root.
+func paths(req Request) []string {
+	if req.Scope == Open {
 		return req.Files
-	default:
-		return []string{req.Root}
 	}
+	return []string{req.Root}
 }
 
-// stream runs term through ripgrep over the scope's paths, or over stdin if
-// it is set, handing each matching line to f until f returns false.
-func stream(ctx context.Context, rg string, req Request, term string, stdin io.Reader, f func(Match) bool) error {
-	cmdArgs := append(append(args(req, stdin != nil), "--json"), "--", req.expr(term))
-	cmdArgs = append(cmdArgs, paths(req, stdin != nil)...)
+// stream runs the query through ripgrep over the scope's paths, handing each
+// matching line to f until f returns false.
+func stream(ctx context.Context, rg string, req Request, f func(Match) bool) error {
+	cmdArgs := append(append(args(req), "--json"), "--", req.expr())
+	cmdArgs = append(cmdArgs, paths(req)...)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, rg, cmdArgs...)
-	cmd.Stdin = stdin
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	stdout, err := cmd.StdoutPipe()
@@ -468,16 +361,9 @@ func stream(ctx context.Context, rg string, req Request, term string, stdin io.R
 	return nil
 }
 
-// finish sorts each match's spans, dropping any two terms matched alike,
-// sorts matches by path, in menu order, then line, keeps the first limit, and
-// counts the files.
+// finish sorts matches by path, in menu order, then line, keeps the first
+// limit, and counts the files.
 func finish(ms []Match, limit int) Result {
-	for i := range ms {
-		slices.SortFunc(ms[i].Spans, func(a, b [2]int) int {
-			return cmp.Or(cmp.Compare(a[0], b[0]), cmp.Compare(a[1], b[1]))
-		})
-		ms[i].Spans = slices.Compact(ms[i].Spans)
-	}
 	slices.SortStableFunc(ms, func(a, b Match) int {
 		return cmp.Or(natural.PathCompare(a.Path, b.Path), cmp.Compare(a.Line, b.Line))
 	})

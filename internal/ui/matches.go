@@ -18,9 +18,9 @@ import (
 // Search matches come from ripgrep as source lines, but the pane shows
 // glamour's output, where markup is gone and lines are re-wrapped. So each
 // match is placed in two steps: the source line picks its block, then the
-// query's terms are matched again, as Go regexps, in that block's rendered
-// lines, searched as one text so a match can run across a wrap. If they match
-// nothing there (say the term is anchored with ^), the
+// query is matched again, as a Go regexp, in that block's rendered lines,
+// searched as one text so a match can run across a wrap. If it matches
+// nothing there (say it is anchored with ^), the
 // strings ripgrep matched are looked up instead, ignoring case. If the text is
 // not visible either way (say it was a link URL), the line estimated from the
 // source position gets a gutter mark.
@@ -49,11 +49,11 @@ type piece struct{ line, start, end int }
 type matches struct {
 	query string
 	mode  search.Mode
-	lines []int            // 0-based source lines with a match, distinct, sorted
-	count map[int]int      // matches ripgrep found on each source line, if more than one
-	pats  []*regexp.Regexp // the query's terms, to find matches in rendered lines
-	terms []string         // matched text, the fallback when pats find nothing
-	cur   int              // current occurrence, or -1
+	lines []int          // 0-based source lines with a match, distinct, sorted
+	count map[int]int    // matches ripgrep found on each source line, if more than one
+	pat   *regexp.Regexp // the query, to find matches in rendered lines
+	terms []string       // matched text, the fallback when pat finds nothing
+	cur   int            // current occurrence, or -1
 
 	// Derived from a rendering by index. doc and view are what it was
 	// indexed against, so an index built off the UI thread can be checked.
@@ -86,8 +86,8 @@ func newMatches(req search.Request, ms []search.Match) *matches {
 		}
 	}
 	slices.Sort(lines)
-	pats, _ := req.Patterns() // on an error, the matched strings will do
-	return &matches{query: req.Query, mode: req.Mode, lines: slices.Compact(lines), count: count, pats: pats, terms: terms, cur: -1}
+	pat, _ := req.Pattern() // on an error, the matched strings will do
+	return &matches{query: req.Query, mode: req.Mode, lines: slices.Compact(lines), count: count, pat: pat, terms: terms, cur: -1}
 }
 
 // setMatches puts m in the pane, indexing it unless it already was, for the
@@ -282,8 +282,8 @@ func (m *matches) index(d *doc.Doc, v *doc.Rendered) {
 }
 
 // findInBlock returns the occurrences in block b, in order, each as its
-// pieces on rendered lines. The query's patterns come first; the matched
-// strings only if the patterns find nothing in the block.
+// pieces on rendered lines. The query's pattern comes first; the matched
+// strings only if the pattern finds nothing in the block.
 func (m *matches) findInBlock(v *doc.Rendered, b int) [][]piece {
 	start, end := v.BlockSpan(b)
 	plain := make([]string, end-start)
@@ -291,8 +291,8 @@ func (m *matches) findInBlock(v *doc.Rendered, b int) [][]piece {
 		plain[r-start] = ansi.Strip(v.Lines[r])
 	}
 	var out [][]piece
-	if len(m.pats) > 0 {
-		out = findPatterns(plain, m.pats)
+	if m.pat != nil {
+		out = findPattern(plain, m.pat)
 	}
 	if len(out) == 0 {
 		for i, l := range plain {
@@ -341,15 +341,11 @@ func findTerms(line string, terms []string) [][2]int {
 	return slices.Compact(out)
 }
 
-// findPatterns returns the occurrences of any pattern in the plain-text lines
-// of a block, each as its pieces by index into lines, in order of where they
-// start. The lines are searched as one text, so a match can run across a
-// wrap; each line gets its part, less the wrap's padding and indent. Empty
-// matches are skipped, and two patterns matching the same text count once.
-func findPatterns(lines []string, pats []*regexp.Regexp) [][]piece {
-	if len(pats) == 0 {
-		return nil
-	}
+// findPattern returns the occurrences of re in the plain-text lines of a
+// block, each as its pieces by index into lines, in order. The lines are
+// searched as one text, so a match can run across a wrap; each line gets its
+// part, less the wrap's padding and indent. Empty matches are skipped.
+func findPattern(lines []string, re *regexp.Regexp) [][]piece {
 	// Glamour pads lines to the wrap width; the padding is not text.
 	starts := make([]int, len(lines)) // byte offset of each line in text
 	var sb strings.Builder
@@ -376,35 +372,30 @@ func findPatterns(lines []string, pats []*regexp.Regexp) [][]piece {
 		return cells[i][b]
 	}
 	var out [][]piece
-	for _, re := range pats {
-		for _, loc := range re.FindAllStringIndex(text, -1) {
-			if loc[0] == loc[1] {
-				continue
+	for _, loc := range re.FindAllStringIndex(text, -1) {
+		if loc[0] == loc[1] {
+			continue
+		}
+		var ps []piece
+		first, _ := slices.BinarySearch(starts, loc[0]+1)
+		for i := first - 1; i < len(lines) && starts[i] < loc[1]; i++ {
+			l := lines[i]
+			s, e := max(loc[0]-starts[i], 0), min(loc[1]-starts[i], len(l))
+			if loc[0] < starts[i] { // continued from the line above
+				s += len(l[s:]) - len(strings.TrimLeft(l[s:], " \u00a0"))
 			}
-			var ps []piece
-			first, _ := slices.BinarySearch(starts, loc[0]+1)
-			for i := first - 1; i < len(lines) && starts[i] < loc[1]; i++ {
-				l := lines[i]
-				s, e := max(loc[0]-starts[i], 0), min(loc[1]-starts[i], len(l))
-				if loc[0] < starts[i] { // continued from the line above
-					s += len(l[s:]) - len(strings.TrimLeft(l[s:], " \u00a0"))
-				}
-				if loc[1] > starts[i]+len(l) { // goes on to the line below
-					e = len(strings.TrimRight(l[:e], " \u00a0"))
-				}
-				if s < e {
-					ps = append(ps, piece{i, col(i, s), col(i, e)})
-				}
+			if loc[1] > starts[i]+len(l) { // goes on to the line below
+				e = len(strings.TrimRight(l[:e], " \u00a0"))
 			}
-			if len(ps) > 0 {
-				out = append(out, ps)
+			if s < e {
+				ps = append(ps, piece{i, col(i, s), col(i, e)})
 			}
 		}
+		if len(ps) > 0 {
+			out = append(out, ps)
+		}
 	}
-	slices.SortStableFunc(out, func(a, b []piece) int {
-		return cmp.Or(cmp.Compare(a[0].line, b[0].line), cmp.Compare(a[0].start, b[0].start), cmp.Compare(a[0].end, b[0].end))
-	})
-	return slices.CompactFunc(out, func(a, b []piece) bool { return slices.Equal(a, b) })
+	return out
 }
 
 // decorate applies search highlights to rendered line r.

@@ -74,7 +74,7 @@ func Default() Config {
 		Style:   "auto",
 		Width:   120,
 		Startup: Startup{TOC: true, SearchBar: true, Tabs: true},
-		Search:  Search{Scope: search.Repo, Case: search.IgnoreCase},
+		Search:  Search{Scope: search.Repo, Literal: true, Case: search.IgnoreCase},
 		Menu:    Menu{HideIgnored: false},
 	}
 }
@@ -203,12 +203,12 @@ func Template(bindings []Binding) string {
 	fmt.Fprintf(&b, "[startup]\n# What is shown at start-up (each can be toggled while running).\n"+
 		"# toc = %t\n# search_bar = %t\n# tabs = %t\n\n", d.Startup.TOC, d.Startup.SearchBar, d.Startup.Tabs)
 	fmt.Fprintf(&b, "[search]\n# Where ? starts: file, open, dir or repo. It then remembers the last scope used.\n# scope = %q\n"+
-		"# Match a query as one phrase of plain text, ignoring the spacing and inline\n# markup between its words, rather than as space-separated regexes; ctrl+r\n# toggles it.\n# literal = %t\n"+
+		"# Match a query as one phrase of plain text, ignoring the spacing and inline\n# markup between its words; false treats it as one regex. ctrl+r toggles it.\n# literal = %t\n"+
 		"# Letter case: ignore (rg -i), smart (rg -S: sensitive if the query has capitals) or sensitive.\n# case = %q\n"+
 		"# Skip these paths in dir/repo/open searches, as gitignore-style globs\n# (rg -g '!pat'), e.g. node_modules. A file opened explicitly is always searched.\n# exclude = []\n\n",
 		d.Search.Scope, d.Search.Literal, d.Search.Case)
-fmt.Fprintf(&b, "[menu]\n# Hide files ignored by git; alt+. toggles.\n# hide_ignored = %t\n# Gray out the names of files ignored by git in the menu; d toggles.\n# dim_ignored = %t\n\n",
-	d.Menu.HideIgnored, d.Menu.DimIgnored)
+	fmt.Fprintf(&b, "[menu]\n# Hide files ignored by git; alt+. toggles.\n# hide_ignored = %t\n# Gray out the names of files ignored by git in the menu; d toggles.\n# dim_ignored = %t\n\n",
+		d.Menu.HideIgnored, d.Menu.DimIgnored)
 	b.WriteString(`[theme]
 # ANSI colours (0-255), "#rgb" or "#rrggbb". Unset colours follow the
 # style: dracula, tokyo-night and pink have matching UI colours; the others

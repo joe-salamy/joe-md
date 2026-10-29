@@ -82,7 +82,7 @@ tabs = true
 
 [search]
 scope = "dir"           # where ? starts: file, open, dir or repo
-literal = false         # one phrase of plain text, not regexes
+literal = true          # one phrase of plain text; false: one regex (ctrl+r toggles)
 case = "smart"          # ignore (rg -i), smart (rg -S) or sensitive
 exclude = []            # skip these gitignore-style globs in dir/repo/open searches
 
@@ -272,10 +272,12 @@ jumps to it. Hold `shift` while dragging to select text in most terminals.
 
 ## Search
 
-Searching uses [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg -i`: a
-case-insensitive regex, unless the settings file says otherwise). `ctrl+r` in
-the search bar switches between regex and literal text (a phrase), shown by the
-`regex` / `literal` chip; the choice sticks for later searches. It runs only
+Searching uses [ripgrep](https://github.com/BurntSushi/ripgrep). A query is
+plain text (literal mode) by default; `ctrl+r` in the search bar switches to
+a regex and back, shown by the `literal` / `regex` chip, and the choice
+sticks for later searches (`search.literal = false` in the settings file
+starts in regex mode). Case is ignored unless the settings file says
+otherwise. It runs only
 when you press `enter`, never while you type, and in the background, so big
 files and repos never make typing lag. Placing thousands of matches in the
 rendered text happens in the background too.
@@ -310,19 +312,19 @@ vim's quickfix, instead of opening a tab each. The opened file's matches are
 highlighted and `n` / `N` step through them. A file search belongs to the pane
 it was typed in.
 
-In regex mode, separate terms with spaces to require them all: `alpha needle`
-matches only lines containing both, in any order, and highlights each one, the
-same AND the file menu's filter uses. `alpha|needle` still matches lines with
-either, and a phrase with a space is one regex term: `alpha\s+needle`. In
-literal mode the whole query is one phrase of plain text (trimmed at the
-ends): `shut up` matches only those words side by side. Any run of spaces
-between the words matches, and so does inline markup around the spaces:
-`one fixed string` finds `one **fixed** string`, ``one `fixed` string`` and
-`one [fixed](a.md) string`. ripgrep searches one line at a time, so a phrase
-broken across two source lines is not found.
+In literal mode (the default) the whole query is one phrase of plain text
+(trimmed at the ends): `people v.` matches only those words side by side,
+with a real period. Any run of spaces between the words matches, and so does
+inline markup around the spaces: `one fixed string` finds
+`one **fixed** string`, ``one `fixed` string`` and `one [fixed](a.md) string`.
+Straight and curly quotes match each other (`don't` finds `don’t`), and so do
+`-`, `–` and `—`. In regex mode the whole query is one regex, spaces
+included: `alpha needle` matches those words side by side, `alpha|needle`
+either, and `alpha.*needle` both in that order. ripgrep searches one line at
+a time, so a phrase broken across two source lines is not found.
 
 Matches are found in the markdown source but you read the rendered text, so
-joe-md runs the query again (as Go regexps, with the same case rule) over the
+joe-md runs the query again (as a Go regexp, with the same case rule) over the
 rendered lines of each block ripgrep matched, and highlights what it finds
 there, with the current match in a stronger colour. The block's lines are
 searched as one text, so a phrase that wraps onto the next line is highlighted

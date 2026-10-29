@@ -117,61 +117,47 @@ func TestRun(t *testing.T) {
 	}
 }
 
-func TestTerms(t *testing.T) {
-	for _, tc := range []struct {
-		q       string
-		literal bool
-		want    []string
-	}{
-		{"", false, nil},
-		{"  alpha\tneedle\nomega  ", false, []string{"alpha", "needle", "omega"}},
-		{"   ", true, nil},
-		// A literal query is one phrase, trimmed.
-		{"  shut up ", true, []string{"shut up"}},
-	} {
-		got := Request{Query: tc.q, Mode: Mode{Literal: tc.literal}}.Terms()
-		if strings.Join(got, "|") != strings.Join(tc.want, "|") || len(got) != len(tc.want) {
-			t.Errorf("Terms(%q, literal=%v) = %q, want %q", tc.q, tc.literal, got, tc.want)
-		}
-	}
-}
-
-func TestPatterns(t *testing.T) {
+func TestPattern(t *testing.T) {
 	for _, tc := range []struct {
 		q    string
 		mode Mode
 		text string
-		want []string // what each pattern finds in text, joined by ","
+		want string // what the pattern finds in text, joined by ","
 	}{
-		{`\bup\b`, Mode{}, "setup UP up", []string{"UP,up"}},
-		{"up", Mode{Case: MatchCase}, "setup UP up", []string{"up,up"}},
-		{"Up", Mode{Case: SmartCase}, "Up up", []string{"Up"}},
-		{"up", Mode{Case: SmartCase}, "Up up", []string{"Up,up"}},
+		{`\bup\b`, Mode{}, "setup UP up", "UP,up"},
+		{"up", Mode{Case: MatchCase}, "setup UP up", "up,up"},
+		{"Up", Mode{Case: SmartCase}, "Up up", "Up"},
+		{"up", Mode{Case: SmartCase}, "Up up", "Up,up"},
 		// An escape is not a capital for smart case.
-		{`up\W`, Mode{Case: SmartCase}, "UP! up!", []string{"UP!,up!"}},
-		{"a.b c", Mode{Literal: true}, "a.b c, axb c, A.B C", []string{"a.b c,A.B C"}},
-		{"alpha needle", Mode{}, "Alpha needle", []string{"Alpha", "needle"}},
+		{`up\W`, Mode{Case: SmartCase}, "UP! up!", "UP!,up!"},
+		// A regex is one pattern, spaces and all: words must be side by side.
+		{" people v. ", Mode{}, "people of the state v. smith, people vs. jones", "people vs"},
+		{"a.b c", Mode{Literal: true}, "a.b c, axb c, A.B C", "a.b c,A.B C"},
 		// A phrase skips whitespace and inline markup between its words.
 		{"one fixed string", Mode{Literal: true}, "one **fixed** string, one `fixed`\n  string, one [fixed](a.md) string",
-			[]string{"one **fixed** string,one `fixed`\n  string,one [fixed](a.md) string"}},
-		{"one fixed", Mode{Literal: true}, "one\u00a0fixed, onefixed, one - fixed", []string{"one\u00a0fixed"}},
+			"one **fixed** string,one `fixed`\n  string,one [fixed](a.md) string"},
+		{"one fixed", Mode{Literal: true}, "one\u00a0fixed, onefixed, one - fixed", "one\u00a0fixed"},
+		// Straight and curly quotes match each other, as do the dash forms.
+		{`don't "1990-95"`, Mode{Literal: true}, "don’t “1990–95”, dont 1990 95", "don’t “1990–95”"},
+		{"don’t", Mode{Literal: true}, "don't", "don't"},
 	} {
-		pats, err := Request{Query: tc.q, Mode: tc.mode}.Patterns()
-		if err != nil || len(pats) != len(tc.want) {
-			t.Fatalf("%q: %v %v", tc.q, pats, err)
+		re, err := Request{Query: tc.q, Mode: tc.mode}.Pattern()
+		if err != nil || re == nil {
+			t.Fatalf("%q: %v %v", tc.q, re, err)
 		}
-		for i, re := range pats {
-			if got := strings.Join(re.FindAllString(tc.text, -1), ","); got != tc.want[i] {
-				t.Errorf("%q (%+v) in %q: %q, want %q", tc.q, tc.mode, tc.text, got, tc.want[i])
-			}
+		if got := strings.Join(re.FindAllString(tc.text, -1), ","); got != tc.want {
+			t.Errorf("%q (%+v) in %q: %q, want %q", tc.q, tc.mode, tc.text, got, tc.want)
 		}
 	}
-	if _, err := (Request{Query: "("}).Patterns(); err == nil {
+	if re, err := (Request{Query: "   "}).Pattern(); re != nil || err != nil {
+		t.Errorf("blank query: %v %v", re, err)
+	}
+	if _, err := (Request{Query: "("}).Pattern(); err == nil {
 		t.Error("a bad regex should be an error")
 	}
 }
 
-func TestRunMultiTerm(t *testing.T) {
+func TestRunPhrases(t *testing.T) {
 	if _, err := exec.LookPath("rg"); err != nil {
 		t.Skip("rg not installed")
 	}
@@ -183,44 +169,16 @@ func TestRunMultiTerm(t *testing.T) {
 		}
 		return p
 	}
-	a := write("a.md", "alpha needle alpha\nonly alpha here\nonly needle here\nneither\n")
 	ctx := context.Background()
 
+	// A regex with a space is one pattern, not terms to AND.
+	a := write("a.md", "alpha needle alpha needle\nneedle then alpha\nalpha\n")
 	res, err := Run(ctx, Request{Query: "alpha needle", Scope: File, Root: a})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(res.Matches) != 1 || res.Matches[0].Line != 1 {
-		t.Fatalf("AND on one line: %+v", res)
-	}
-	m := res.Matches[0]
-	if len(m.Spans) != 3 {
-		t.Fatalf("merged spans %v in %q", m.Spans, m.Text)
-	}
-	if terms := m.Terms(); len(terms) != 2 || terms[0] != "alpha" || terms[1] != "needle" {
-		t.Fatalf("terms %q", terms)
+	if err != nil || len(res.Matches) != 1 || res.Matches[0].Line != 1 || len(res.Matches[0].Spans) != 2 {
+		t.Fatalf("regex with a space: %+v %v", res, err)
 	}
 
-	// No single line holds all three: AND, not OR.
-	res, err = Run(ctx, Request{Query: "alpha needle here", Scope: File, Root: a})
-	if err != nil || len(res.Matches) != 0 {
-		t.Fatalf("three terms: %+v %v", res, err)
-	}
-
-	// Sharing a file is not enough; the terms must share a line.
-	b := write("b.md", "alpha\nneedle\n")
-	res, err = Run(ctx, Request{Query: "alpha needle", Scope: File, Root: b})
-	if err != nil || len(res.Matches) != 0 {
-		t.Fatalf("different lines: %+v %v", res, err)
-	}
-
-	// Across files, only the co-occurring line comes back.
-	res, err = Run(ctx, Request{Query: "alpha needle", Scope: Dir, Root: dir})
-	if err != nil || len(res.Matches) != 1 || res.Files != 1 || res.Matches[0].Path != a {
-		t.Fatalf("dir scope: %+v %v", res, err)
-	}
-
-	// A literal query is one phrase, not terms to AND.
+	// A literal query is one phrase.
 	d := write("d.md", "a.b plus c\naxb plus c\nsay a.b c\n")
 	res, err = Run(ctx, Request{Query: " a.b c ", Mode: Mode{Literal: true}, Scope: File, Root: d})
 	if err != nil || len(res.Matches) != 1 || res.Matches[0].Line != 3 {
@@ -237,15 +195,15 @@ func TestRunMultiTerm(t *testing.T) {
 		t.Fatalf("phrase span: %q", got)
 	}
 
-	// A repeated term runs once: no duplicated spans.
-	res, err = Run(ctx, Request{Query: "alpha alpha", Scope: File, Root: a})
-	if err != nil || len(res.Matches) != 2 || len(res.Matches[0].Spans) != 2 {
-		t.Fatalf("repeated term: %+v %v", res, err)
+	// ripgrep folds quotes and dashes the same way.
+	q := write("q.md", "don’t stop\ndon't stop\n1990—95\ndont stop\n")
+	res, err = Run(ctx, Request{Query: "don't stop", Mode: Mode{Literal: true}, Scope: File, Root: q})
+	if err != nil || len(res.Matches) != 2 {
+		t.Fatalf("quotes: %+v %v", res, err)
 	}
-
-	// A bad regex in any term is still an error.
-	if _, err = Run(ctx, Request{Query: "( alpha", Scope: File, Root: a}); err == nil {
-		t.Fatal("bad regex in one term should be an error")
+	res, err = Run(ctx, Request{Query: "1990-95", Mode: Mode{Literal: true}, Scope: File, Root: q})
+	if err != nil || len(res.Matches) != 1 || res.Matches[0].Line != 3 {
+		t.Fatalf("dashes: %+v %v", res, err)
 	}
 }
 
@@ -282,41 +240,6 @@ func TestRunOpenScope(t *testing.T) {
 	t.Chdir(dir)
 	if res, err := Run(context.Background(), Request{Query: "needle", Scope: Open, Root: dir}); err != nil || len(res.Matches) != 0 {
 		t.Fatalf("open search of no files: %+v %v", res, err)
-	}
-}
-
-// A common term doesn't crowd out the lines a rarer one shares with it: the
-// limit applies to the lines matching every term, whatever their order.
-func TestRunCommonTermUnderLimit(t *testing.T) {
-	if _, err := exec.LookPath("rg"); err != nil {
-		t.Skip("rg not installed")
-	}
-	dir := t.TempDir()
-	var sb strings.Builder
-	for i := range 50 {
-		if i%10 == 0 {
-			sb.WriteString("common zebra\n")
-		} else {
-			sb.WriteString("common\n")
-		}
-	}
-	for _, name := range []string{"a.md", "b.md"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(sb.String()), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for _, q := range []string{"common zebra", "zebra common", "c z"} {
-		res, err := Run(context.Background(), Request{Query: q, Scope: Dir, Root: dir, Limit: 20})
-		if err != nil || len(res.Matches) != 10 || res.Files != 2 || res.Truncated {
-			t.Fatalf("%q: %d matches in %d files, truncated %v, %v", q, len(res.Matches), res.Files, res.Truncated, err)
-		}
-		if m := res.Matches[0]; len(m.Terms()) != 2 {
-			t.Fatalf("%q: spans %v in %q", q, m.Spans, m.Text)
-		}
-	}
-	res, err := Run(context.Background(), Request{Query: "zebra common", Scope: Dir, Root: dir, Limit: 4})
-	if err != nil || len(res.Matches) != 4 || !res.Truncated {
-		t.Fatalf("limit: %d matches, truncated %v, %v", len(res.Matches), res.Truncated, err)
 	}
 }
 

@@ -89,8 +89,8 @@ func TestDumpConfigParses(t *testing.T) {
 
 func TestConfigParse(t *testing.T) {
 	c := config.Default()
-	err := config.Parse([]byte("width = 90\n[startup]\ntoc = false\n[search]\nscope = \"dir\"\nliteral = true\n[theme]\naccent = \"#ff8800\"\n"), &c)
-	if err != nil || c.Width != 90 || c.Startup.TOC || !c.Startup.Tabs || c.Search.Scope != search.Dir || !c.Search.Literal || c.Theme.Accent != "#ff8800" {
+	err := config.Parse([]byte("width = 90\n[startup]\ntoc = false\n[search]\nscope = \"dir\"\nliteral = false\n[theme]\naccent = \"#ff8800\"\n"), &c)
+	if err != nil || c.Width != 90 || c.Startup.TOC || !c.Startup.Tabs || c.Search.Scope != search.Dir || c.Search.Literal || c.Theme.Accent != "#ff8800" {
 		t.Fatalf("parse: %+v %v", c, err)
 	}
 	err = config.Parse([]byte("[search]\nexclude = [\"node_modules\", \"dist\"]\n"), &c)
@@ -230,19 +230,25 @@ func TestHelpOverlay(t *testing.T) {
 }
 
 func TestLiteralToggle(t *testing.T) {
-	a := newTestApp(t, filepath.Join(fixture(t), "a.md"))
+	d, err := doc.Load(filepath.Join(fixture(t), "a.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Options as main builds them from the default settings.
+	a := New([]*doc.Doc{d}, Options{Style: "notty", MaxWrap: 80, Mode: search.Mode{Literal: config.Default().Search.Literal}})
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	press(a, "/")
-	if a.mode.Literal || !strings.Contains(ansi.Strip(a.barView()), "regex") {
-		t.Fatal("regex by default")
+	if !a.mode.Literal || !strings.Contains(ansi.Strip(a.barView()), "literal") {
+		t.Fatal("literal by default")
 	}
 	a.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
-	if !a.mode.Literal || !strings.Contains(ansi.Strip(a.barView()), "literal") {
-		t.Fatal("ctrl+r should switch to literal")
+	if a.mode.Literal || !strings.Contains(ansi.Strip(a.barView()), "regex") {
+		t.Fatal("ctrl+r should switch to regex")
 	}
 	typeText(a, "a.md")
 	press(a, "enter")
-	if !a.mode.Literal {
-		t.Fatal("literal should stay on for the next search")
+	if a.mode.Literal {
+		t.Fatal("regex should stay on for the next search")
 	}
 }
 
