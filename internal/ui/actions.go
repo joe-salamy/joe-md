@@ -23,6 +23,7 @@ import (
 //	menu     the file menu
 //	filter   the file menu's name filter while typing
 //	help     the help overlay
+//	help_search  the help overlay's search while typing
 //
 // A key is spelled as tea's KeyPressMsg.String() spells it. A sequence is
 // keys joined by spaces ("g g"); its first keys start the sequence.
@@ -39,10 +40,12 @@ const (
 	ctxMenu    keyCtx = "menu"
 	ctxFilter  keyCtx = "filter"
 	ctxHelp    keyCtx = "help"
+
+	ctxHelpSearch keyCtx = "help_search"
 )
 
 // contexts orders the contexts in -dump-config.
-var contexts = []keyCtx{ctxNormal, ctxWindow, ctxTOC, ctxResults, ctxSearch, ctxMenu, ctxFilter, ctxHelp}
+var contexts = []keyCtx{ctxNormal, ctxWindow, ctxTOC, ctxResults, ctxSearch, ctxMenu, ctxFilter, ctxHelp, ctxHelpSearch}
 
 // call is what an action gets: the count typed before it (0 if none), n (the
 // count, at least 1) and the key that triggered it.
@@ -73,6 +76,7 @@ var actions []*action
 var groups = []string{
 	"Scrolling", "File", "Search", "Search bar", "Results list", "Tabs", "Panes",
 	"Focus and layout", "Table of contents", "Quitting", "Help", "File menu", "Menu filter", "Help overlay",
+	"Help search",
 }
 
 // groupNotes follow a group's table in the help and KEYS.md.
@@ -83,6 +87,7 @@ var groupNotes = map[string]string{
 	"Panes":             "These follow the window prefix. A count before the prefix or after it resizes by that much: `5 ctrl+w >` or `ctrl+w 5 >`.",
 	"Table of contents": "`{n}gg` and `{n}G` go to heading *n*.",
 	"Menu filter":       "Other keys edit the filter, which matches as you type; the search bar's line-editing keys work here too.",
+	"Help search":       "Other keys edit the search, which matches as you type; the search bar's line-editing keys work here too. *all* matches either.",
 }
 
 // fixedKey is a key that isn't an action, so the settings file can't change
@@ -403,7 +408,7 @@ func init() {
 	)
 	add(ctxNormal, "Help",
 		&action{name: "help", desc: "show the keys", keys: keys("f1", "g ?"),
-			run: do(func(a *App, c call) { a.help = &Help{} })},
+			run: do(func(a *App, c call) { a.openHelp() })},
 	)
 
 	msel := func(f func(m *Menu, c call, rows int) int) func(a *App, c call) tea.Cmd {
@@ -539,7 +544,39 @@ func init() {
 			run: hscroll(func(a *App, c call) int { return -len(a.helpLines()) })},
 		&action{name: "bottom", desc: "bottom", row: "top / bottom", keys: keys("G", "end"),
 			run: hscroll(func(a *App, c call) int { return len(a.helpLines()) })},
-		&action{name: "close", desc: "close the help", keys: keys("esc", "q", "f1", "g ?"),
-			run: do(func(a *App, c call) { a.help = nil })},
+		&action{name: "search", desc: "search the keys", keys: keys("/"),
+			run: func(a *App, c call) tea.Cmd { a.help.typing = true; return a.help.search.Focus() }},
+		&action{name: "close", desc: "close the help (esc clears the search first)", keys: keys("esc", "q", "f1", "g ?"),
+			run: do(func(a *App, c call) {
+				if c.key == "esc" && a.help.search.Value() != "" {
+					a.setHelpSearch("")
+					return
+				}
+				a.help = nil
+			})},
+	)
+	scope := func(d int) func(a *App, c call) tea.Cmd {
+		return do(func(a *App, c call) {
+			a.help.scope = (a.help.scope + d + len(helpScopes)) % len(helpScopes)
+			a.helpRefilter()
+		})
+	}
+	add(ctxHelpSearch, "Help search",
+		&action{name: "done", desc: "stop typing, keeping the filter", keys: keys("enter"),
+			run: do(func(a *App, c call) { a.help.stopSearch() })},
+		&action{name: "cancel", desc: "clear the search and stop", keys: keys("esc"),
+			run: do(func(a *App, c call) { a.help.stopSearch(); a.setHelpSearch("") })},
+		&action{name: "clear", desc: "clear the search (again to stop)", keys: keys("ctrl+c"),
+			run: do(func(a *App, c call) {
+				if a.help.search.Value() == "" {
+					a.help.stopSearch()
+				} else {
+					a.setHelpSearch("")
+				}
+			})},
+		&action{name: "scope_next", desc: "next scope: all, actions, keys", row: "next / previous scope: all, actions, keys", keys: keys("tab"),
+			run: scope(1)},
+		&action{name: "scope_prev", desc: "previous scope", row: "next / previous scope: all, actions, keys", keys: keys("shift+tab"),
+			run: scope(-1)},
 	)
 }

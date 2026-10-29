@@ -205,7 +205,7 @@ func TestHelpOverlay(t *testing.T) {
 		}
 	}
 	for _, w := range []int{40, 58, 98} {
-		for _, l := range a.keymap.helpText(w, a.theme) {
+		for _, l := range a.keymap.helpText(w, a.theme, "", 0) {
 			if ansi.StringWidth(l) > w {
 				t.Errorf("help line wider than %d: %q", w, ansi.Strip(l))
 			}
@@ -226,6 +226,43 @@ func TestHelpOverlay(t *testing.T) {
 	press(a, "esc")
 	if a.help != nil {
 		t.Fatal("esc should close the help")
+	}
+}
+
+func TestHelpSearch(t *testing.T) {
+	a := newTestApp(t, filepath.Join(fixture(t), "a.md"))
+	press(a, "f1", "/")
+	for _, r := range "ctrl+w" {
+		press(a, string(r))
+	}
+	press(a, "tab", "tab") // keys
+	text := ansi.Strip(strings.Join(a.helpLines(), "\n"))
+	if !strings.Contains(text, "ctrl+w v") || strings.Contains(text, "scroll down / up") || strings.Contains(text, "count before the prefix") {
+		t.Errorf("keys scope should keep only rows with ctrl+w:\n%s", text)
+	}
+	press(a, "ctrl+c")
+	for _, r := range "scope" {
+		press(a, string(r))
+	}
+	press(a, "shift+tab", "enter") // actions
+	text = ansi.Strip(strings.Join(a.helpLines(), "\n"))
+	if !strings.Contains(text, "Help search") || !strings.Contains(text, "previous scope: all") || strings.Contains(text, "Scrolling") {
+		t.Errorf("actions scope should match descriptions:\n%s", text)
+	}
+	if screen := ansi.Strip(a.View().Content); !strings.Contains(screen, "[actions]") {
+		t.Errorf("the footer should show the scope:\n%s", screen)
+	}
+	press(a, "j") // not typing: j scrolls, the query stays
+	if a.help.search.Value() != "scope" {
+		t.Error("enter should keep the search")
+	}
+	press(a, "esc")
+	if a.help == nil || a.help.search.Value() != "" {
+		t.Fatal("esc should clear the search first")
+	}
+	press(a, "esc")
+	if a.help != nil {
+		t.Fatal("esc again should close the help")
 	}
 }
 

@@ -114,7 +114,7 @@ don't go unnoticed. Flags are checked the same way.
 Every key belongs to a named action in a context: `normal` (the document,
 and keys that work everywhere), `toc` and `results` (when focused; other keys
 fall through to `normal`), `window` (after `ctrl+w`), `search` (the search
-bar), `menu`, `filter` (the menu's name filter) and `help`. [KEYS.md](KEYS.md)
+bar), `menu`, `filter` (the menu's name filter), `help` and `help_search`. [KEYS.md](KEYS.md)
 lists each action's name and keys. Keys are spelled as joe-md sees them
 (`j`, `G`, `ctrl+d`, `alt+t`, `shift+tab`, `enter`, `space`, `f1`); a
 sequence is keys separated by spaces (`"g g"`, `"] q"`). Giving a key to one
@@ -126,7 +126,8 @@ and digits are always counts.
 
 Counts work like vim: `5j`, `3]]`, `42G`. [KEYS.md](KEYS.md) has every key on
 one page, and `f1` (or `g?`) shows them inside joe-md, as currently bound:
-`j` `k` scroll, `esc` kills the search, `q` closes.
+`j` `k` scroll, `/` searches the keys (`tab` cycles the scope: all, actions,
+keys; `enter` keeps the filter), `esc` clears the search, then closes; `q` closes.
 
 ### Document
 

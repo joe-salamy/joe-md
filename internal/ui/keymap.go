@@ -23,7 +23,7 @@ type Keymap struct {
 }
 
 // singleKeyContexts are the typing contexts, where a sequence can't start.
-var singleKeyContexts = map[keyCtx]bool{ctxSearch: true, ctxFilter: true}
+var singleKeyContexts = map[keyCtx]bool{ctxSearch: true, ctxFilter: true, ctxHelpSearch: true}
 
 // DefaultKeymap is the keymap with no changes.
 func DefaultKeymap() *Keymap {

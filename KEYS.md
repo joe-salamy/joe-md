@@ -173,12 +173,24 @@ Other keys edit the filter, which matches as you type; the search bar's line-edi
 
 ## Help overlay
 
-| Key                                           | Action           | Name                         |
-|-----------------------------------------------|------------------|------------------------------|
-| `j/k` `down/up`                               | scroll down / up | `help.down` / `up`           |
-| `ctrl+d/u` `ctrl+f/b` `pgdown/pgup` `space/b` | a page down / up | `help.page_down` / `page_up` |
-| `gg/G` `home/end`                             | top / bottom     | `help.top` / `bottom`        |
-| `esc` `q` `f1` `g?`                           | close the help   | `help.close`                 |
+| Key                                           | Action                                       | Name                         |
+|-----------------------------------------------|----------------------------------------------|------------------------------|
+| `j/k` `down/up`                               | scroll down / up                             | `help.down` / `up`           |
+| `ctrl+d/u` `ctrl+f/b` `pgdown/pgup` `space/b` | a page down / up                             | `help.page_down` / `page_up` |
+| `gg/G` `home/end`                             | top / bottom                                 | `help.top` / `bottom`        |
+| `/`                                           | search the keys                              | `help.search`                |
+| `esc` `q` `f1` `g?`                           | close the help (esc clears the search first) | `help.close`                 |
+
+## Help search
+
+| Key             | Action                                    | Name                                    |
+|-----------------|-------------------------------------------|-----------------------------------------|
+| `enter`         | stop typing, keeping the filter           | `help_search.done`                      |
+| `esc`           | clear the search and stop                 | `help_search.cancel`                    |
+| `ctrl+c`        | clear the search (again to stop)          | `help_search.clear`                     |
+| `tab/shift+tab` | next / previous scope: all, actions, keys | `help_search.scope_next` / `scope_prev` |
+
+Other keys edit the search, which matches as you type; the search bar's line-editing keys work here too. *all* matches either.
 
 ## Mouse
 

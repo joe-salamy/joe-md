@@ -79,8 +79,8 @@ type App struct {
 	msg     string // one-shot status message
 	help    *Help  // the help overlay, nil when closed; see help.go
 
-	helpCache  []string // the help's text, laid out helpCacheW wide
-	helpCacheW int
+	helpCache    []string // the help's text, laid out for helpCacheKey
+	helpCacheKey helpCacheKey
 
 	// Search bar and results; see search.go.
 	input       textinput.Model
@@ -217,6 +217,7 @@ func (a *App) fitInputs() {
 		a.menu.filter.SetWidth(a.filterWidth())
 	}
 	if a.help != nil {
+		a.help.search.SetWidth(a.helpSearchWidth())
 		a.help.scroll(0, len(a.helpLines()), a.helpRows())
 	}
 }
@@ -269,6 +270,11 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 	case searchDoneMsg:
 		a.searchDone(msg)
 	default:
+		if a.help != nil && a.help.typing {
+			var cmd tea.Cmd
+			a.help.search, cmd = a.help.search.Update(msg)
+			return cmd
+		}
 		if a.menu != nil && a.menu.filtering {
 			var cmd tea.Cmd
 			a.menu.filter, cmd = a.menu.filter.Update(msg)
@@ -290,8 +296,7 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.inputKey(msg)
 	}
 	if a.help != nil {
-		cmd, _ := a.dispatch(&a.help.pending, k, 0, ctxHelp)
-		return cmd
+		return a.helpKey(msg)
 	}
 	if a.countDigit(k, a.pending) {
 		return nil
