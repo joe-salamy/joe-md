@@ -55,13 +55,14 @@ type App struct {
 	// Tabs and panes; see tabs.go and split.go. pane is the current tab's
 	// focused pane and toc its sidebar state; both are nil only while the
 	// start-up menu is open with nothing else to show.
-	tabs     []*Tab
-	cur      int
-	pane     *Pane
-	toc      *TOC
-	showTabs bool
-	drag     *border   // pane border being dragged with the mouse
-	closed   []*closed // closed tabs and panes, newest last; see closed.go
+	tabs      []*Tab
+	cur       int
+	pane      *Pane
+	toc       *TOC
+	tocFilter tocFilter // the sidebar's heading filter; see toc.go
+	showTabs  bool
+	drag      *border   // pane border being dragged with the mouse
+	closed    []*closed // closed tabs and panes, newest last; see closed.go
 
 	menu            *Menu // the pop-up file menu, nil when closed; see menu.go
 	menuAll         bool  // the menu lists hidden and non-markdown files too
@@ -111,6 +112,7 @@ func New(docs []*doc.Doc, opts Options) *App {
 		showTOC:         !opts.NoTOC,
 		showTabs:        !opts.NoTabs,
 		input:           newInput(opts.Dark, ""), // setPlaceholder fills it in
+		tocFilter:       tocFilter{input: newInput(opts.Dark, "filter headings")},
 		showBar:         !opts.NoBar,
 		crossScope:      opts.Scope,
 		mode:            opts.Mode,
@@ -199,6 +201,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	snap := a.scrollSnapshot()
 	cmd := a.update(msg)
 	a.scrollBind(snap)
+	a.keepTOCFilter()
 	a.fitInputs()
 	// The sidebar follows the document, except that the wheel may scroll it
 	// away from the current heading; wheel syncs it when it scrolls a pane.
@@ -213,6 +216,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // resize may have shortened. View itself changes nothing.
 func (a *App) fitInputs() {
 	a.input.SetWidth(a.inputWidth())
+	a.tocFilter.input.SetWidth(max(a.tocWidth()-4, 1))
 	if a.menu != nil {
 		a.menu.filter.SetWidth(a.filterWidth())
 	}
@@ -280,6 +284,11 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 			a.menu.filter, cmd = a.menu.filter.Update(msg)
 			return cmd
 		}
+		if a.tocFilter.on {
+			var cmd tea.Cmd
+			a.tocFilter.input, cmd = a.tocFilter.input.Update(msg)
+			return cmd
+		}
 		if a.typing { // cursor blink and friends
 			var cmd tea.Cmd
 			a.input, cmd = a.input.Update(msg)
@@ -294,6 +303,9 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 	a.msg = ""
 	if a.typing {
 		return a.inputKey(msg)
+	}
+	if a.tocFilter.on {
+		return a.tocFilterKey(msg)
 	}
 	if a.help != nil {
 		return a.helpKey(msg)
@@ -507,7 +519,11 @@ func (a *App) wheel(m tea.Mouse) {
 		return
 	}
 	if a.inTOC(m) {
-		a.toc.Scroll(a.pane.doc, step, a.bodyHeight())
+		if f := a.activeTOCFilter(); f != nil {
+			f.view.scroll(step, len(f.shown), a.tocRows())
+		} else {
+			a.toc.Scroll(a.pane.doc, step, a.bodyHeight())
+		}
 		return
 	}
 	if a.pane == nil {
@@ -567,8 +583,12 @@ func (a *App) click(m tea.Mouse) tea.Cmd {
 		}
 		return nil
 	}
-	if i := a.toc.HeadingAt(a.pane.doc, m.Y); i >= 0 {
-		a.tocSelect(i)
+	if i := a.toc.HeadingAt(a.pane.doc, a.activeTOCFilter(), m.Y); i >= 0 {
+		if a.tocFilter.on {
+			a.tocFilterSelect(i)
+		} else {
+			a.tocSelect(i)
+		}
 	}
 	return nil
 }
@@ -595,7 +615,7 @@ func (a *App) View() tea.View {
 	}
 	if a.showTOC && a.pane != nil {
 		tw := a.tocWidth()
-		side := a.toc.Render(a.pane.doc, a.pane.CurrentHeading(), a.focus == focusTOC, tw, len(body), a.theme)
+		side := a.toc.Render(a.pane.doc, a.activeTOCFilter(), a.pane.CurrentHeading(), a.focus == focusTOC, tw, len(body), a.theme)
 		sep := a.theme.separator.Render("│")
 		for y := range body {
 			body[y] = side[y] + "\x1b[0m" + sep + body[y]

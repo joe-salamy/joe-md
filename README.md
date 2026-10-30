@@ -113,8 +113,9 @@ don't go unnoticed. Flags are checked the same way.
 
 Every key belongs to a named action in a context: `normal` (the document,
 and keys that work everywhere), `toc` and `results` (when focused; other keys
-fall through to `normal`), `window` (after `ctrl+w`), `search` (the search
-bar), `menu`, `filter` (the menu's name filter), `help` and `help_search`. [KEYS.md](KEYS.md)
+fall through to `normal`), `toc_filter` (the sidebar's heading filter),
+`window` (after `ctrl+w`), `search` (the search bar), `menu`, `filter` (the
+menu's name filter), `help` and `help_search`. [KEYS.md](KEYS.md)
 lists each action's name and keys. Keys are spelled as joe-md sees them
 (`j`, `G`, `ctrl+d`, `alt+t`, `shift+tab`, `enter`, `space`, `f1`); a
 sequence is keys separated by spaces (`"g g"`, `"] q"`). Giving a key to one
@@ -143,6 +144,7 @@ keys; `enter` keeps the filter), `esc` clears the search, then closes; `q` close
 | `r`                          | reload the file from disk           |
 | `/`                          | search this file                    |
 | `g b`                        | search the open files               |
+| `g c`                        | search the table of contents (shows the sidebar and filters it) |
 | `?`                          | search across files (last used scope, repo at first) |
 | `n` `N`                      | next / previous match               |
 | `]q` `[q`                    | open next / previous search result  |
@@ -221,7 +223,17 @@ in it.
 | `tab`, `ctrl+w h` / `ctrl+w l` | move focus between sidebar and document |
 | `j` `k`                      | select heading (the document follows) |
 | `gg` `G` `{n}G`              | first / last / *n*-th heading       |
+| `/`                          | filter the headings by title        |
 | `enter` `esc` `l` `h`        | back to the document                |
+
+`/` in the sidebar, or `g c` from anywhere, filters the headings as you type,
+with the file menu's rule: every space-separated word must appear in the
+title, ignoring case. The shown headings keep their indentation, and the
+cursor and document follow the first match (or stay on the heading they were
+on, if it still matches). `↑` `↓` move through the matches, and the search
+bar's line-editing keys work. `enter` goes back to the document at the
+heading, hiding the sidebar again if `g c` showed it; `esc` clears the filter
+and stays in the sidebar; `ctrl+c` clears the filter (again to stop).
 
 ### File menu
 

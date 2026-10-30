@@ -192,7 +192,7 @@ func (m *Menu) refilter(showAll, hideIgnored bool, rows int) {
 	if e, ok := m.current(); ok {
 		sel = e.name
 	}
-	terms := strings.Fields(strings.ToLower(m.filter.Value()))
+	terms := filterTerms(m.filter.Value())
 	m.shown = m.shown[:0]
 	for i, e := range m.entries {
 		switch {
@@ -203,15 +203,7 @@ func (m *Menu) refilter(showAll, hideIgnored bool, rows int) {
 		case !showAll && !e.parent && (e.hidden || !e.dir && !e.md):
 			continue
 		}
-		name := strings.ToLower(e.name)
-		ok := true
-		for _, t := range terms {
-			if !strings.Contains(name, t) {
-				ok = false
-				break
-			}
-		}
-		if ok {
+		if hasTerms(e.name, terms) {
 			m.shown = append(m.shown, i)
 		}
 	}
@@ -231,6 +223,25 @@ func (m *Menu) refilter(showAll, hideIgnored bool, rows int) {
 	m.cursor, m.offset = 0, 0
 	m.selectName(sel, rows)
 	m.anchor = m.cursor
+}
+
+// filterTerms splits a filter into its words, lowercased. A name passes
+// when it contains every one, ignoring case: see hasTerms. The file menu and
+// the sidebar filter by this rule.
+func filterTerms(q string) []string { return strings.Fields(strings.ToLower(q)) }
+
+// hasTerms reports whether s contains every term, ignoring case.
+func hasTerms(s string, terms []string) bool {
+	if len(terms) == 0 {
+		return true
+	}
+	s = strings.ToLower(s)
+	for _, t := range terms {
+		if !strings.Contains(s, t) {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *Menu) current() (entry, bool) {

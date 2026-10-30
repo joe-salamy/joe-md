@@ -17,6 +17,7 @@ import (
 //
 //	normal   the document, and keys that work everywhere outside a pop-up
 //	toc      the sidebar, when focused (falls back to normal)
+//	toc_filter  the sidebar's heading filter while typing
 //	results  the results list, when focused (falls back to normal)
 //	window   the key after normal.window (ctrl+w)
 //	search   the search bar while typing (other keys edit the text)
@@ -41,11 +42,12 @@ const (
 	ctxFilter  keyCtx = "filter"
 	ctxHelp    keyCtx = "help"
 
+	ctxTOCFilter  keyCtx = "toc_filter"
 	ctxHelpSearch keyCtx = "help_search"
 )
 
 // contexts orders the contexts in -dump-config.
-var contexts = []keyCtx{ctxNormal, ctxWindow, ctxTOC, ctxResults, ctxSearch, ctxMenu, ctxFilter, ctxHelp, ctxHelpSearch}
+var contexts = []keyCtx{ctxNormal, ctxWindow, ctxTOC, ctxTOCFilter, ctxResults, ctxSearch, ctxMenu, ctxFilter, ctxHelp, ctxHelpSearch}
 
 // call is what an action gets: the count typed before it (0 if none), n (the
 // count, at least 1) and the key that triggered it.
@@ -75,7 +77,7 @@ var actions []*action
 // groups orders the help sections.
 var groups = []string{
 	"Scrolling", "File", "Search", "Search bar", "Results list", "Tabs", "Panes",
-	"Focus and layout", "Table of contents", "Quitting", "Help", "File menu", "Menu filter", "Help overlay",
+	"Focus and layout", "Table of contents", "TOC filter", "Quitting", "Help", "File menu", "Menu filter", "Help overlay",
 	"Help search",
 }
 
@@ -86,6 +88,7 @@ var groupNotes = map[string]string{
 	"Tabs":              "`{n}gt` goes to tab *n*; `3>>` moves the tab three places, stopping at the ends. `tab_n` goes to the tab numbered by the last digit of its key.",
 	"Panes":             "These follow the window prefix. A count before the prefix or after it resizes by that much: `5 ctrl+w >` or `ctrl+w 5 >`.",
 	"Table of contents": "`{n}gg` and `{n}G` go to heading *n*.",
+	"TOC filter":        "Other keys edit the filter, which matches as you type; the search bar's line-editing keys work here too.",
 	"Menu filter":       "Other keys edit the filter, which matches as you type; the search bar's line-editing keys work here too.",
 	"Help search":       "Other keys edit the search, which matches as you type; the search bar's line-editing keys work here too. *all* matches either.",
 }
@@ -194,6 +197,8 @@ func init() {
 			run: func(a *App, c call) tea.Cmd { return a.startSearch(search.File) }},
 		&action{name: "search_open", desc: "search the open files", keys: keys("g b"),
 			run: func(a *App, c call) tea.Cmd { return a.startSearch(search.Open) }},
+		&action{name: "search_toc", desc: "search the table of contents: show the sidebar and filter it", keys: keys("g c"),
+			run: docCmd(func(a *App, c call) tea.Cmd { return a.searchTOC() })},
 		&action{name: "search_files", desc: "search the directory or repo", keys: keys("?"),
 			run: func(a *App, c call) tea.Cmd { return a.startSearch(a.crossScope) }},
 		&action{name: "next_match", desc: "next match", row: "next / previous match", keys: keys("n"),
@@ -387,8 +392,28 @@ func init() {
 				}
 				return len(a.pane.doc.Headings) - 1
 			})},
+		&action{name: "filter", desc: "filter the headings by title", keys: keys("/"),
+			run: docCmd(func(a *App, c call) tea.Cmd { return a.startTOCFilter(false) })},
 		&action{name: "back", desc: "back to the document", keys: keys("enter", "l", "esc", "h"),
 			run: do(func(a *App, c call) { a.focus = focusDoc })},
+	)
+	add(ctxTOCFilter, "TOC filter",
+		&action{name: "accept", desc: "stop filtering and go back to the document at the heading", keys: keys("enter"),
+			run: do(func(a *App, c call) { a.acceptTOCFilter() })},
+		&action{name: "cancel", desc: "clear the filter and stop, staying in the sidebar", keys: keys("esc"),
+			run: do(func(a *App, c call) { a.stopTOCFilter() })},
+		&action{name: "clear", desc: "clear the filter (again to stop)", keys: keys("ctrl+c"),
+			run: do(func(a *App, c call) {
+				if a.tocFilter.input.Value() == "" {
+					a.stopTOCFilter()
+				} else {
+					a.setTOCFilter("")
+				}
+			})},
+		&action{name: "down", desc: "next heading", row: "next / previous heading (the document follows)", keys: keys("down"),
+			run: do(func(a *App, c call) { a.tocFilterStep(1) })},
+		&action{name: "up", desc: "previous heading", row: "next / previous heading (the document follows)", keys: keys("up"),
+			run: do(func(a *App, c call) { a.tocFilterStep(-1) })},
 	)
 
 	add(ctxNormal, "Quitting",

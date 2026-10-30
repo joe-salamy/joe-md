@@ -33,16 +33,17 @@ explains each feature.
 
 ## Search
 
-| Key     | Action                                         | Name                                 |
-|---------|------------------------------------------------|--------------------------------------|
-| `/`     | search this file                               | `normal.search_file`                 |
-| `gb`    | search the open files                          | `normal.search_open`                 |
-| `?`     | search the directory or repo                   | `normal.search_files`                |
-| `n/N`   | next / previous match                          | `normal.next_match` / `prev_match`   |
-| `gr`    | open / close the results list                  | `normal.toggle_results`              |
-| `]q/[q` | next / previous result, in the focused pane    | `normal.next_result` / `prev_result` |
-| `esc`   | kill the search: no more highlights or results | `normal.clear_search`                |
-| `alt+s` | show / hide the search bar                     | `normal.toggle_search_bar`           |
+| Key     | Action                                                       | Name                                 |
+|---------|--------------------------------------------------------------|--------------------------------------|
+| `/`     | search this file                                             | `normal.search_file`                 |
+| `gb`    | search the open files                                        | `normal.search_open`                 |
+| `gc`    | search the table of contents: show the sidebar and filter it | `normal.search_toc`                  |
+| `?`     | search the directory or repo                                 | `normal.search_files`                |
+| `n/N`   | next / previous match                                        | `normal.next_match` / `prev_match`   |
+| `gr`    | open / close the results list                                | `normal.toggle_results`              |
+| `]q/[q` | next / previous result, in the focused pane                  | `normal.next_result` / `prev_result` |
+| `esc`   | kill the search: no more highlights or results               | `normal.clear_search`                |
+| `alt+s` | show / hide the search bar                                   | `normal.toggle_search_bar`           |
 
 ## Search bar
 
@@ -117,9 +118,21 @@ These follow the window prefix. A count before the prefix or after it resizes by
 | `j/k` `down/up`       | next / previous heading (the document follows) | `toc.down` / `up`           |
 | `ctrl+d/u` `d/u`      | half a page down / up                          | `toc.half_down` / `half_up` |
 | `gg/G` `home/end`     | first / last heading, or heading n             | `toc.first` / `last`        |
+| `/`                   | filter the headings by title                   | `toc.filter`                |
 | `enter` `l` `esc` `h` | back to the document                           | `toc.back`                  |
 
 `{n}gg` and `{n}G` go to heading *n*.
+
+## TOC filter
+
+| Key       | Action                                                    | Name                     |
+|-----------|-----------------------------------------------------------|--------------------------|
+| `enter`   | stop filtering and go back to the document at the heading | `toc_filter.accept`      |
+| `esc`     | clear the filter and stop, staying in the sidebar         | `toc_filter.cancel`      |
+| `ctrl+c`  | clear the filter (again to stop)                          | `toc_filter.clear`       |
+| `down/up` | next / previous heading (the document follows)            | `toc_filter.down` / `up` |
+
+Other keys edit the filter, which matches as you type; the search bar's line-editing keys work here too.
 
 ## Quitting
 
