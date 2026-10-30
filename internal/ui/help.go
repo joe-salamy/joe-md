@@ -31,7 +31,7 @@ func (a *App) openHelp() {
 // the scope and the widest position.
 func (a *App) helpSearchWidth() int {
 	_, _, w, _ := a.helpRect()
-	return max(w-2-3-len(" [actions] "+a.hint(ctxHelpSearch, "scope_next")+": scope")-len(" 9999/9999 "), 1)
+	return max(w-2-1-len(" [actions] "+a.hint(ctxHelpSearch, "scope_next")+": scope")-len(" 9999/9999 "), 1)
 }
 
 // helpRefilter shows the top of the text after the query or scope changed.
@@ -199,7 +199,7 @@ func (a *App) helpView() []string {
 	pos := strconv.Itoa(min(a.help.offset+rows, len(lines))) + "/" + strconv.Itoa(len(lines))
 	var left string
 	if hs := a.help; hs.typing || hs.search.Value() != "" {
-		left = th.barPrompt.Render(" / ") + hs.search.View() + th.dim.Render(" ["+helpScopes[hs.scope]+"] "+a.hint(ctxHelpSearch, "scope_next")+": scope")
+		left = " " + hs.search.View() + th.dim.Render(" ["+helpScopes[hs.scope]+"] "+a.hint(ctxHelpSearch, "scope_next")+": scope")
 	} else {
 		left = th.dim.Render(" " + a.hint(ctxHelp, "down") + " " + a.hint(ctxHelp, "up") + " scroll · " + a.hint(ctxHelp, "search") + " search · " + a.hint(ctxHelp, "close") + " close")
 	}
