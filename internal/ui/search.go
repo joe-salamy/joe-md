@@ -261,6 +261,8 @@ func (a *App) fileSearchDone(m searchDoneMsg) tea.Cmd {
 	a.setResults(m.req, m.res)
 	if len(m.res.Matches) == 0 {
 		a.msg = "no matches for " + m.req.Query
+	} else if m.res.Truncated {
+		a.msg = "search limit reached"
 	}
 	if m.pre.doc != p.doc || m.pre.view != p.view {
 		// The pane re-rendered while ripgrep ran: index again off the UI
