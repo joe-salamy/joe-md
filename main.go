@@ -13,7 +13,6 @@ import (
 	"github.com/joe-salamy/joe-md/internal/ui"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 )
 
 func main() {
@@ -100,20 +99,17 @@ func main() {
 		docs = append(docs, d)
 	}
 
-	// Query the background before the TUI takes over the terminal.
-	dark := lipgloss.HasDarkBackground(os.Stdin, os.Stdout)
+	// auto honours $GLAMOUR_STYLE; if that is unset too, the UI asks the
+	// terminal for its background asynchronously (see ui.App.Init), so a
+	// terminal that does not answer OSC 11 cannot delay start-up.
 	if cfg.Style == "auto" {
-		cfg.Style = os.Getenv("GLAMOUR_STYLE")
-		if cfg.Style == "" || cfg.Style == "auto" {
-			cfg.Style = "light"
-			if dark {
-				cfg.Style = "dark"
-			}
+		if env := os.Getenv("GLAMOUR_STYLE"); env != "" && env != "auto" {
+			cfg.Style = env
 		}
 	}
 
 	app := ui.New(docs, ui.Options{
-		Style: cfg.Style, Dark: dark, MaxWrap: cfg.Width,
+		Style: cfg.Style, Dark: true, MaxWrap: cfg.Width,
 		NoTOC: !cfg.Startup.TOC, NoBar: !cfg.Startup.SearchBar, NoTabs: !cfg.Startup.Tabs,
 		MenuDir:     menuDir,
 		HideIgnored: cfg.Menu.HideIgnored,

@@ -271,3 +271,44 @@ func TestMenuMouseMultiSelect(t *testing.T) {
 		t.Fatalf("plain click: menu %v tabs %q", a.menu != nil, tabNames(a))
 	}
 }
+
+// O opens the file under the cursor in the focused pane; one pane cannot show
+// several marked files, so it does not load them all in turn.
+func TestMenuOpenHereOpensOnlyCurrent(t *testing.T) {
+	dir := fixture(t)
+	a := newTestApp(t, filepath.Join(dir, "a.md"))
+	press(a, "o")
+	openMenuAt(a, "a.md")
+	a.menu.markAll() // a.md and b.md
+	press(a, "O")
+	if a.menu != nil {
+		t.Fatal("the menu should close after opening")
+	}
+	if got := tabNames(a); got != "a.md" {
+		t.Fatalf("tabs = %q, want just a.md", got)
+	}
+	if a.pane == nil || a.pane.doc.Name != "a.md" {
+		t.Fatalf("focused pane = %v", a.pane != nil)
+	}
+}
+
+// Marked files opened with v are siblings of the pane the menu started on,
+// not a chain of splits of the newest pane.
+func TestMenuSplitOpensSiblings(t *testing.T) {
+	dir := fixture(t)
+	a := newTestApp(t, filepath.Join(dir, "a.md"))
+	a.Update(tea.WindowSizeMsg{Width: 200, Height: 30})
+	press(a, "o")
+	a.menu.markAll() // a.md and b.md
+	press(a, "v")
+	if a.menu != nil {
+		t.Fatal("the menu should close after opening")
+	}
+	root := a.tab().root
+	if !root.vert || len(root.kids) != 3 {
+		t.Fatalf("want three columns, got vert=%v kids=%d", root.vert, len(root.kids))
+	}
+	if got := paneNames(a); strings.Count(got, "a.md") != 2 || !strings.Contains(got, "*b.md") {
+		t.Fatalf("panes = %q, want two a.md and the focused b.md", got)
+	}
+}

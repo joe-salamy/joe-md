@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"bytes"
 	"math"
 	"slices"
 	"strconv"
@@ -429,7 +428,7 @@ func (a *App) paneStatus(n *Node, focused bool) string {
 	if focused {
 		style = a.theme.tabActive
 	}
-	left := " " + p.doc.Name
+	left := " " + sanitizeLine(p.doc.Name)
 	if p.bind {
 		left += " [bind]"
 	}
@@ -490,7 +489,7 @@ func (a *App) scrollBind(s scrollSnap) {
 		if i == moved || !p.bind || p.offset != s.pos[i] || !a.livePane(p) {
 			continue
 		}
-		if p.wrap == m.wrap && (p.doc == m.doc || bytes.Equal(p.doc.Source, m.doc.Source)) {
+		if p.wrap == m.wrap && (p.doc.SameContent(m.doc)) {
 			p.ScrollBy(d)
 		} else if dsrc != 0 {
 			p.ScrollToSource(s.src[i] + dsrc)

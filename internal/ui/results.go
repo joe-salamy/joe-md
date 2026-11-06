@@ -105,7 +105,7 @@ func (r *Results) Render(width, height int, focused bool, th theme) []string {
 	if r.res.Truncated {
 		title += " (limit reached)"
 	}
-	title += " · " + r.req.Scope.String() + " " + openRoot(r.req) + " "
+	title += " · " + r.req.Scope.String() + " " + sanitizeLine(openRoot(r.req)) + " "
 	title = th.separator.Render("─") + th.resultsTitle.Render(ansi.Truncate(title, width-2, "…"))
 	out = append(out, fit(title+th.separator.Render(strings.Repeat("─", max(0, width-ansi.StringWidth(title)))), width))
 
@@ -113,12 +113,13 @@ func (r *Results) Render(width, height int, focused bool, th theme) []string {
 	pathW, lineW := 0, 0
 	for i := r.offset; i < n && i < r.offset+height-1; i++ {
 		path, line := r.location(i)
+		path = sanitizeLine(path)
 		pathW, lineW = max(pathW, ansi.StringWidth(path)), max(lineW, len(line))
 	}
 	pathW = min(pathW, max(width/3-lineW, 8))
 	for i := r.offset; i < n && len(out) < height; i++ {
 		path, line := r.location(i)
-		path = ansi.Truncate(path, pathW, "…")
+		path = ansi.Truncate(sanitizeLine(path), pathW, "…")
 		var loc string
 		if path == "" { // a file search: line numbers right-aligned
 			loc = strings.Repeat(" ", lineW-len(line)) + line
@@ -201,19 +202,53 @@ func relPath(req search.Request, path string) string {
 }
 
 // relBase is the directory match paths show relative to: the root, or for an
-// open search with files in no shared directory, none.
+// open search the deepest directory holding every open file (none when they
+// share no directory).
 func relBase(req search.Request) string {
-	if req.Scope != search.Open || len(req.Files) != 1 {
+	if req.Scope != search.Open {
 		return req.Root
 	}
-	return filepath.Dir(req.Files[0])
+	return commonDir(req.Files)
+}
+
+// commonDir is the deepest directory containing every path, or "" when they
+// share none.
+func commonDir(paths []string) string {
+	if len(paths) == 0 {
+		return ""
+	}
+	base := filepath.Dir(paths[0])
+	for _, p := range paths[1:] {
+		for {
+			rel, err := filepath.Rel(base, p)
+			if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				break
+			}
+			parent := filepath.Dir(base)
+			if parent == base {
+				return ""
+			}
+			base = parent
+		}
+	}
+	return base
 }
 
 // openRoot is the results title's location: the root, or for an open search
-// of one file the file itself.
+// the directory the open files share (or the file itself for one file).
 func openRoot(req search.Request) string {
-	if req.Scope == search.Open && len(req.Files) == 1 {
-		return tildePath(req.Files[0])
+	if req.Scope == search.Open {
+		switch {
+		case len(req.Files) == 1:
+			return tildePath(req.Files[0])
+		case len(req.Files) == 0:
+			return "(no files)"
+		default:
+			if base := commonDir(req.Files); base != "" {
+				return tildePath(base)
+			}
+			return "(no common directory)"
+		}
 	}
 	return tildePath(req.Root)
 }
@@ -223,6 +258,7 @@ func openRoot(req search.Request) string {
 // rather than going, so the spans still line up with the rows' nth.
 func trimMatch(m search.Match) (string, [][2]int) {
 	text := strings.ReplaceAll(m.Text, "\t", " ") // same byte length, spans still valid
+	text = stripControlBytes(text)
 	cut := len(text) - len(strings.TrimLeft(text, " "))
 	spans := make([][2]int, len(m.Spans))
 	for i, s := range m.Spans {

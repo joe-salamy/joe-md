@@ -4,6 +4,8 @@ import (
 	"os"
 	"slices"
 
+	"github.com/joe-salamy/joe-md/internal/doc"
+
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -46,9 +48,46 @@ type closed struct {
 }
 
 func (a *App) pushClosed(e *closed) {
+	// A closed pane keeps its place and layout, but not its rendered text:
+	// the stack would otherwise hold every closed document's lines in memory.
+	switch e.kind {
+	case closedTab:
+		slimTab(e.tab)
+	case closedPane:
+		slimPane(e.node.pane)
+	case closedOthers:
+		for _, l := range e.root.leaves() {
+			if l != e.kept {
+				slimPane(l.pane)
+			}
+		}
+	}
 	a.closed = append(a.closed, e)
 	if len(a.closed) > closedMax {
 		a.closed = slices.Delete(a.closed, 0, len(a.closed)-closedMax)
+	}
+}
+
+// slimPane frees a closed pane's rendered lines, matches and parsed document,
+// keeping the source line to restore and enough to re-read the file.
+func slimPane(p *Pane) {
+	if p == nil {
+		return
+	}
+	if p.view != nil && !p.reopenAnchorOK {
+		p.reopenAnchor, p.reopenAnchorOK = p.TopSource(), true
+	}
+	p.view = nil
+	p.match = nil
+	p.indexToken++
+	if p.doc != nil {
+		p.doc = &doc.Doc{Path: p.doc.Path, Name: p.doc.Name, Lines: p.doc.Lines, MinHeadingLevel: 6}
+	}
+}
+
+func slimTab(t *Tab) {
+	for _, l := range t.leaves() {
+		slimPane(l.pane)
 	}
 }
 
@@ -108,6 +147,12 @@ func (a *App) reopenOne(e *closed) (tea.Cmd, bool) {
 	var reload []*Node
 	switch e.kind {
 	case closedTab:
+		for _, l := range e.tab.leaves() {
+			if _, err := os.Stat(l.pane.doc.Path); err != nil {
+				a.msg = "reopen: " + err.Error()
+				return nil, false
+			}
+		}
 		i := min(e.idx, len(a.tabs))
 		a.tabs = slices.Insert(a.tabs, i, e.tab)
 		a.activate(i)
@@ -120,6 +165,16 @@ func (a *App) reopenOne(e *closed) (tea.Cmd, bool) {
 		a.reopenPane(e)
 		reload = []*Node{e.node}
 	case closedOthers:
+		tabGone := a.tabIndex(e.tab) < 0
+		for _, l := range e.root.leaves() {
+			if l == e.kept && !tabGone {
+				continue // the kept pane is live, even if its file is gone
+			}
+			if _, err := os.Stat(l.pane.doc.Path); err != nil {
+				a.msg = "reopen: " + err.Error()
+				return nil, false
+			}
+		}
 		a.reopenOthers(e)
 		reload = a.tab().leaves()
 	}

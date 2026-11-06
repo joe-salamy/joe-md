@@ -98,13 +98,14 @@ func (p *Pane) setMatches(m *matches) {
 		old.doc == p.doc && old.view == p.view && slices.Equal(old.lines, m.lines) && maps.Equal(old.count, m.count) {
 		return
 	}
+	p.indexToken++
 	p.match = m
 	if m.doc != p.doc || m.view != p.view {
 		p.indexMatches()
 	}
 }
 
-func (p *Pane) ClearMatches() { p.match = nil }
+func (p *Pane) ClearMatches() { p.indexToken++; p.match = nil }
 
 // from reports whether m came from a search for req: same query, same mode.
 func (m *matches) from(req search.Request) bool {
@@ -278,6 +279,9 @@ func (m *matches) index(d *doc.Doc, v *doc.Rendered) {
 	}
 	for _, hs := range m.hits {
 		slices.SortStableFunc(hs, func(a, b cellRange) int { return cmp.Compare(a.start, b.start) })
+	}
+	if m.cur >= len(m.occs) {
+		m.cur = -1 // the list shrank under the old index
 	}
 }
 

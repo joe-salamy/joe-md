@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joe-salamy/joe-md/internal/doc"
 	"github.com/joe-salamy/joe-md/internal/search"
@@ -207,70 +208,155 @@ func (a *App) refreshSearch(p *Pane) tea.Cmd {
 		return nil
 	}
 	req := search.Request{Query: q, Mode: p.match.mode, Scope: search.File, Root: search.Root(p.doc.Path, search.File)}
-	return searchCmd(context.Background(), searchDoneMsg{pane: p, req: req, purpose: searchRefresh})
+	msg := searchDoneMsg{pane: p, req: req, purpose: searchRefresh}
+	return func() tea.Msg {
+		// A refresh is best-effort: bound it so a stuck ripgrep cannot keep
+		// running after the pane has moved on.
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		return searchCmd(ctx, msg)()
+	}
 }
 
-func (a *App) searchDone(m searchDoneMsg) {
+func (a *App) searchDone(m searchDoneMsg) tea.Cmd {
 	if m.purpose == searchRefresh {
-		if m.err == nil && a.livePane(m.pane) && m.pane.match.from(m.req) {
-			m.pane.setMatches(m.pre)
+		if m.err != nil || !a.livePane(m.pane) || !m.pane.match.from(m.req) {
+			return nil
 		}
-		return
+		if m.pre.doc == m.pane.doc && m.pre.view == m.pane.view {
+			m.pane.setMatches(m.pre)
+			return nil
+		}
+		return indexCmd(m.pane, m.pre, -1, 0, false)
 	}
 	if m.seq != a.seq {
-		return // superseded
+		return nil // superseded
 	}
 	a.cancel, a.searching = nil, ""
 	if m.err != nil {
 		a.msg = "search: " + m.err.Error()
-		return
+		return nil
 	}
-	q, matches := m.req.Query, m.res.Matches
-	// A file search belongs to the pane it was started in, which may no
-	// longer have focus (or be open at all).
+	if m.req.Scope == search.File {
+		return a.fileSearchDone(m)
+	}
+	return a.crossSearchDone(m)
+}
+
+// fileSearchDone finishes a search of one file: vim-style, it jumps to the
+// first match below the view. The pane may have been closed or unfocused
+// while the search ran.
+func (a *App) fileSearchDone(m searchDoneMsg) tea.Cmd {
 	p := m.pane
-	if m.req.Scope == search.File && !a.livePane(p) {
-		return
+	if !a.livePane(p) {
+		return nil
+	}
+	if p != a.pane {
+		if m.pre.doc == p.doc && m.pre.view == p.view {
+			p.setMatches(m.pre) // focus moved meanwhile: no jump
+			return nil
+		}
+		return indexCmd(p, m.pre, -1, 0, false)
+	}
+	a.setResults(m.req, m.res)
+	if len(m.res.Matches) == 0 {
+		a.msg = "no matches for " + m.req.Query
+	}
+	if m.pre.doc != p.doc || m.pre.view != p.view {
+		// The pane re-rendered while ripgrep ran: index again off the UI
+		// thread, then jump.
+		return indexCmd(p, m.pre, -1, 0, true)
+	}
+	p.setMatches(m.pre)
+	if len(m.res.Matches) == 0 {
+		return nil
+	}
+	wrapped, _ := a.pane.JumpMatch(1, true)
+	a.reportJump(1, wrapped)
+	a.syncResults()
+	return nil
+}
+
+// crossSearchDone finishes a dir/repo/open search: the results list opens,
+// and the focused pane gets the matches in its own file.
+func (a *App) crossSearchDone(m searchDoneMsg) tea.Cmd {
+	a.setResults(m.req, m.res)
+	if len(m.res.Matches) > 0 {
+		a.showResults = true
+		a.focus = focusResults
+		a.layout()
+	}
+	if a.pane == nil {
+		return nil
+	}
+	var cmd tea.Cmd
+	switch {
+	case a.pane == m.pane && m.pre.doc == a.pane.doc && m.pre.view == a.pane.view:
+		a.pane.setMatches(m.pre)
+	case a.pane == m.pane:
+		cmd = indexCmd(a.pane, m.pre, -1, 0, false)
+	default:
+		cmd = indexCmd(a.pane, newMatches(m.req, a.results.InFile(a.pane.doc.Path)), -1, 0, false)
+	}
+	if len(m.res.Matches) == 0 {
+		a.msg = "no matches for " + m.req.Query + " in " + m.req.Scope.String()
+		return cmd
+	}
+	a.msg = plural(a.results.Len(), "match", "matches") + " in " + plural(m.res.Files, "file", "files")
+	if m.res.Truncated {
+		a.msg += " (limit reached)"
+	}
+	return cmd
+}
+
+// indexedMsg is a match index built off the UI thread, ready to place in its
+// pane. If the pane re-rendered meanwhile, matchesIndexed builds it again.
+type indexedMsg struct {
+	pane      *Pane
+	m         *matches
+	src, nth  int
+	jumpFirst bool
+	token     int
+}
+
+// indexCmd indexes m against p's document and rendering in the background.
+// The pane's token makes a newer search or match set supersede this index.
+func indexCmd(p *Pane, m *matches, src, nth int, jumpFirst bool) tea.Cmd {
+	p.indexToken++
+	token := p.indexToken
+	d, v := p.doc, p.view
+	return func() tea.Msg {
+		m.index(d, v)
+		return indexedMsg{pane: p, m: m, src: src, nth: nth, jumpFirst: jumpFirst, token: token}
+	}
+}
+
+// matchesIndexed puts an index built in the background into its pane and
+// makes the jump it was asked for. A pane that re-rendered while the index
+// was built is indexed again, still off the UI thread.
+func (a *App) matchesIndexed(m indexedMsg) tea.Cmd {
+	p := m.pane
+	if !a.livePane(p) || m.token != p.indexToken {
+		return nil
+	}
+	if m.m.doc != p.doc || m.m.view != p.view {
+		return indexCmd(p, m.m, m.src, m.nth, m.jumpFirst)
+	}
+	p.setMatches(m.m)
+	if p != a.pane {
+		return nil // the user moved on; do not scroll a background pane
 	}
 	switch {
-	case m.req.Scope == search.File && p != a.pane:
-		p.setMatches(m.pre) // focus moved meanwhile: no jump
-
-	case m.req.Scope == search.File:
-		// Vim-style: jump to the first match below the view; gr lists them.
-		a.setResults(m.req, m.res)
-		p.setMatches(m.pre)
-		if len(matches) == 0 {
-			a.msg = "no matches for " + q
-			return
+	case m.jumpFirst:
+		if p.match != nil && len(p.match.occs) > 0 {
+			wrapped, _ := p.JumpMatch(1, true)
+			a.reportJump(1, wrapped)
+			a.syncResults()
 		}
-		wrapped, _ := a.pane.JumpMatch(1, true)
-		a.reportJump(1, wrapped)
-		a.syncResults()
-
-	default:
-		// Even with no matches the new search replaces the old one: its
-		// results and highlights must not outlive it.
-		a.setResults(m.req, m.res)
-		if len(matches) > 0 {
-			a.showResults = true
-			a.focus = focusResults
-			a.layout()
-		}
-		if a.pane == p {
-			p.setMatches(m.pre)
-		} else {
-			a.pane.setMatches(newMatches(m.req, a.results.InFile(a.pane.doc.Path)))
-		}
-		if len(matches) == 0 {
-			a.msg = "no matches for " + q + " in " + m.req.Scope.String()
-			return
-		}
-		a.msg = plural(a.results.Len(), "match", "matches") + " in " + plural(m.res.Files, "file", "files")
-		if m.res.Truncated {
-			a.msg += " (limit reached)"
-		}
+	case m.src >= 0:
+		p.GotoMatch(m.src, m.nth)
 	}
+	return nil
 }
 
 func (a *App) setResults(req search.Request, res search.Result) {
@@ -306,7 +392,10 @@ func (a *App) syncResults() {
 	if p == nil || r == nil || !p.match.from(r.req) || p.match.cur < 0 {
 		return
 	}
-	src, nth, _ := p.CurrentMatch()
+	src, nth, ok := p.CurrentMatch()
+	if !ok {
+		return
+	}
 	if i := r.Find(p.doc.Path, src+1, nth); i >= 0 {
 		r.Select(i, a.resultRows())
 	}
@@ -319,11 +408,11 @@ func (a *App) syncResults() {
 // searchActive reports whether there is a search for killSearch to kill: one
 // running, a results list, or highlights in any pane.
 func (a *App) searchActive() bool {
-	if a.cancel != nil || a.results != nil {
+	if a.cancel != nil || a.results != nil && a.results.Len() > 0 {
 		return true
 	}
 	for _, p := range a.allPanes() {
-		if p.match != nil {
+		if m := p.match; m != nil && (len(m.occs) > 0 || len(m.marks) > 0) {
 			return true
 		}
 	}
@@ -355,26 +444,26 @@ func (a *App) reportJump(n int, wrapped bool) {
 
 // openResult shows the selected result, with the rest of that file's matches
 // highlighted for n / N.
-func (a *App) openResult(mode openMode) {
-	m, nth := a.results.Current()
-	if !a.openAt(m.Path, mode) {
-		return
+func (a *App) openResult(mode openMode) tea.Cmd {
+	res, nth := a.results.Current()
+	if !a.openAt(res.Path, mode) {
+		return nil
 	}
-	a.pane.setMatches(newMatches(a.results.req, a.results.InFile(m.Path)))
-	a.pane.GotoMatch(m.Line-1, nth)
+	p := a.pane
 	a.focus = focusDoc
-	a.msg = relPath(a.results.req, m.Path) + ":" + strconv.Itoa(m.Line) +
+	a.msg = sanitizeLine(relPath(a.results.req, res.Path)) + ":" + strconv.Itoa(res.Line) +
 		"  (" + strconv.Itoa(a.results.cursor+1) + "/" + strconv.Itoa(a.results.Len()) + ")"
+	return indexCmd(p, newMatches(a.results.req, a.results.InFile(res.Path)), res.Line-1, nth, false)
 }
 
 // stepResult is ]q / [q: open the next or previous result from anywhere.
-func (a *App) stepResult(n int) {
+func (a *App) stepResult(n int) tea.Cmd {
 	if a.results == nil || len(a.results.res.Matches) == 0 {
 		a.msg = "no search results"
-		return
+		return nil
 	}
 	a.results.Select(a.results.cursor+n, a.resultRows())
-	a.openResult(openReplace) // like vim's quickfix, reuse the pane
+	return a.openResult(openReplace) // like vim's quickfix, reuse the pane
 }
 
 func (a *App) resultRows() int { return max(a.panelHeight()-1, 1) }
@@ -425,9 +514,9 @@ func (a *App) barView() string {
 		return fit(line+strings.Repeat(" ", max(gap, 0))+right, w)
 	}
 	if a.searching != "" {
-		return fit(th.barDim.Render(" searching for ")+th.bar.Render(a.searching)+th.barDim.Render(" …"), w)
+		return fit(th.barDim.Render(" searching for ")+th.bar.Render(sanitizeLine(a.searching))+th.barDim.Render(" …"), w)
 	}
-	if q := a.paneQuery(); q != "" {
+	if q := sanitizeLine(a.paneQuery()); q != "" {
 		cur, total := a.pane.MatchPos()
 		right := th.barDim.Render("no matches ")
 		if total > 0 {

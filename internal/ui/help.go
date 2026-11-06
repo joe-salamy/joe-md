@@ -12,11 +12,16 @@ import (
 // Help is the key overlay's state. Its text comes from the keymap, so it
 // shows the keys as the settings file bound them.
 type Help struct {
-	list           // over the lines; only offset is used
+	offset  int    // first line shown
 	pending string // the keys so far of a sequence ("g")
 	search  textinput.Model
 	typing  bool // the search input has the keyboard
 	scope   int  // index into helpScopes
+}
+
+// scroll moves the view d lines without moving past the end.
+func (h *Help) scroll(d, n, rows int) {
+	h.offset = max(0, min(h.offset+d, n-rows))
 }
 
 // helpScopes are what the search matches: all is actions or keys.

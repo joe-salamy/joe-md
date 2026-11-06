@@ -77,3 +77,28 @@ func TestTrimMatchKeepsSpanOrder(t *testing.T) {
 		t.Errorf("got %q %v", text, spans)
 	}
 }
+
+// An open search shows paths relative to the deepest directory its files
+// share, not to the pane that happened to start the search.
+func TestOpenSearchPathsShareADirectory(t *testing.T) {
+	req := search.Request{Scope: search.Open, Root: "/repo/one", Files: []string{
+		"/repo/one/a.md", "/repo/two/b.md",
+	}}
+	if got := relBase(req); got != "/repo" {
+		t.Errorf("relBase = %q, want /repo", got)
+	}
+	if got := relPath(req, "/repo/two/b.md"); got != "two/b.md" {
+		t.Errorf("relPath = %q, want two/b.md", got)
+	}
+	if got := openRoot(req); got != "/repo" {
+		t.Errorf("openRoot = %q, want /repo", got)
+	}
+	one := search.Request{Scope: search.Open, Root: "/repo/one", Files: []string{"/repo/one/a.md"}}
+	if got := relPath(one, "/repo/one/a.md"); got != "a.md" {
+		t.Errorf("single file relPath = %q", got)
+	}
+	none := search.Request{Scope: search.Open}
+	if got := openRoot(none); got != "(no files)" {
+		t.Errorf("empty openRoot = %q", got)
+	}
+}

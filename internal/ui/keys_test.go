@@ -62,6 +62,11 @@ func TestActionTable(t *testing.T) {
 
 func TestDumpConfigParses(t *testing.T) {
 	tmpl := config.Template(Bindings())
+	for _, want := range []string{`# style = "auto"`, "# width = 120"} {
+		if !strings.Contains(tmpl, want) {
+			t.Errorf("template is missing %q", want)
+		}
+	}
 	c := config.Default()
 	if err := config.Parse([]byte(tmpl), &c); err != nil {
 		t.Fatalf("template: %v", err)

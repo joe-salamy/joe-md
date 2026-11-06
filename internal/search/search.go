@@ -36,7 +36,12 @@ const (
 
 var scopeNames = [...]string{"file", "open", "dir", "repo"}
 
-func (s Scope) String() string { return scopeNames[s] }
+func (s Scope) String() string {
+	if s < 0 || int(s) >= len(scopeNames) {
+		return "unknown"
+	}
+	return scopeNames[s]
+}
 
 // Next cycles file → open → dir → repo → file (or backwards for step < 0).
 func (s Scope) Next(step int) Scope {
@@ -84,12 +89,14 @@ const (
 
 var caseNames = [...]string{"ignore", "smart", "sensitive"}
 
-func (c Case) String() string { return caseNames[c] }
+func (c Case) String() string {
+	if c < 0 || int(c) >= len(caseNames) {
+		return "unknown"
+	}
+	return caseNames[c]
+}
 
 // Scope and Case are written by name in the settings file.
-
-func (s Scope) MarshalText() ([]byte, error) { return []byte(s.String()), nil }
-func (c Case) MarshalText() ([]byte, error)  { return []byte(c.String()), nil }
 
 func (s *Scope) UnmarshalText(b []byte) error { return unmarshalName(s, "scope", scopeNames[:], b) }
 func (c *Case) UnmarshalText(b []byte) error  { return unmarshalName(c, "case", caseNames[:], b) }
@@ -122,14 +129,16 @@ type Request struct {
 	// globs (rg -g '!pat'). Explicit file paths are unaffected: ripgrep's
 	// globs never filter them.
 	Exclude []string
-	Limit   int // stop after this many matching lines; 0 means the default
+	limit   int // stop after this many matching lines; 0 means the default
 }
 
 // Default limits: a list of results across files is only useful up to a
-// point, but n / N within one file should reach every match.
+// point, but n / N within one file should reach every match. The file limit
+// is still bounded: a common word in a huge document can match hundreds of
+// thousands of lines, and holding them all is expensive on a small machine.
 const (
 	DefaultLimit     = 5000
-	DefaultFileLimit = 1_000_000
+	DefaultFileLimit = 100_000
 )
 
 // Match is one matching line.
@@ -144,7 +153,11 @@ type Match struct {
 func (m Match) Terms() []string {
 	var out []string
 	for _, s := range m.Spans {
-		if t := m.Text[s[0]:s[1]]; t != "" && !slices.Contains(out, t) {
+		start, end := max(s[0], 0), min(s[1], len(m.Text))
+		if start >= end {
+			continue
+		}
+		if t := m.Text[start:end]; t != "" && !slices.Contains(out, t) {
 			out = append(out, t)
 		}
 	}
@@ -254,7 +267,7 @@ func Run(parent context.Context, req Request) (Result, error) {
 	if err != nil {
 		return Result{}, errors.New("ripgrep (rg) not found in PATH")
 	}
-	limit := req.Limit
+	limit := req.limit
 	switch {
 	case limit > 0:
 	case req.Scope == File:
@@ -285,9 +298,19 @@ func Run(parent context.Context, req Request) (Result, error) {
 // cover them too (an explicit file path bypasses ignores anyway). Hidden
 // files stay skipped.
 func args(req Request) []string {
-	out := []string{[...]string{"-i", "-S", "-s"}[req.Case], "--no-ignore"}
+	caseArg := "-i"
+	switch req.Case {
+	case SmartCase:
+		caseArg = "-S"
+	case MatchCase:
+		caseArg = "-s"
+	}
+	out := []string{caseArg, "--no-ignore"}
 	if req.Scope != File && req.Scope != Open {
-		out = append(out, "-t", "markdown")
+		// ripgrep's markdown type omits the extensions the file menu also
+		// treats as markdown; add a type for them so a dir/repo search sees
+		// the files the menu lists.
+		out = append(out, "--type-add", "joemd:*.mdtext", "--type-add", "joemd:*.mdtxt", "-t", "markdown", "-t", "joemd")
 	}
 	for _, e := range req.Exclude {
 		out = append(out, "-g", "!"+e)
@@ -365,7 +388,10 @@ func stream(ctx context.Context, rg string, req Request, f func(Match) bool) err
 // limit, and counts the files.
 func finish(ms []Match, limit int) Result {
 	slices.SortStableFunc(ms, func(a, b Match) int {
-		return cmp.Or(natural.PathCompare(a.Path, b.Path), cmp.Compare(a.Line, b.Line))
+		if a.Path != b.Path {
+			return natural.PathCompare(a.Path, b.Path)
+		}
+		return cmp.Compare(a.Line, b.Line)
 	})
 	truncated := len(ms) > limit
 	if truncated {

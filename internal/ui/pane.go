@@ -23,6 +23,12 @@ type Pane struct {
 	toc    TOC  // the sidebar's state while this pane has focus
 	bind   bool // scrollbind: scrolls with the tab's other bound panes
 
+	// reopenAnchor is the source line to restore when a closed pane is
+	// reopened; its view is dropped while it is on the closed stack.
+	reopenAnchor   int
+	reopenAnchorOK bool
+	indexToken     int // drops background indexes superseded by a newer one
+
 	// pin is the heading GotoHeading last jumped to. A heading near the end
 	// can't be scrolled to the top, so it counts as the current heading for as
 	// long as the pane stays where the jump left it.
@@ -45,16 +51,26 @@ func (p *Pane) clone() *Pane {
 	return &c
 }
 
+// minWrap is the narrowest width the renderer handles; Layout stores the
+// same clamped width so centring and scrollbind see what was rendered.
+const minWrap = 10
+
+func wrapWidth(width, maxWrap int) int { return max(min(width, maxWrap), minWrap) }
+
 // Layout re-renders the document for a new size, keeping the same source line
 // at the top of the pane. If the wrap width is unchanged the rendering is too,
 // so the view stays exactly where it was.
 func (p *Pane) Layout(r *doc.Renderer, width, height, maxWrap int) error {
 	p.width, p.height = width, height
-	wrap := min(width, maxWrap)
+	wrap := wrapWidth(width, maxWrap)
 	if p.view != nil && wrap == p.wrap {
 		return nil
 	}
-	return p.render(r, wrap, p.TopSource())
+	anchor := p.TopSource()
+	if p.reopenAnchorOK {
+		anchor = p.reopenAnchor // Reload clears it once the file is read
+	}
+	return p.render(r, wrap, anchor)
 }
 
 // render renders the document at wrap and puts source line anchor on top.
@@ -77,15 +93,19 @@ func (p *Pane) Reload(r *doc.Renderer, maxWrap int) (changed bool, err error) {
 	if err != nil {
 		return false, err
 	}
-	if bytes.Equal(d.Source, p.doc.Source) {
+	changed = !bytes.Equal(d.Source, p.doc.Source)
+	if !changed && p.view != nil {
 		return false, nil
 	}
 	anchor := p.TopSource()
+	if p.reopenAnchorOK {
+		anchor, p.reopenAnchorOK = p.reopenAnchor, false
+	}
 	p.doc, p.view = d, nil // never a view of the old text over the new
 	if p.width == 0 {
-		return true, nil // never laid out: Layout renders it when it is shown
+		return changed, nil // never laid out: Layout renders it when it is shown
 	}
-	return true, p.render(r, min(p.width, maxWrap), anchor)
+	return changed, p.render(r, wrapWidth(p.width, maxWrap), anchor)
 }
 
 // TopSource is the source line shown at the top of the pane.

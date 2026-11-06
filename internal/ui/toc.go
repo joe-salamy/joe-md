@@ -25,7 +25,10 @@ type TOC struct {
 // Width is the sidebar width for d on a screen of the given width.
 func (t *TOC) Width(d *doc.Doc, screen int) int {
 	want := len(" Contents ")
-	minLevel := minHeadingLevel(d)
+	minLevel := d.MinHeadingLevel
+	if minLevel < 1 || minLevel > 6 {
+		minLevel = 6
+	}
 	for _, h := range d.Headings {
 		want = max(want, 2*(h.Level-minLevel)+ansi.StringWidth(h.Text)+3)
 	}
@@ -77,7 +80,10 @@ func (t *TOC) Render(d *doc.Doc, f *tocFilter, current int, focused bool, width,
 	if len(d.Headings) == 0 {
 		out = append(out, fit(th.dim.Render(" (no headings)"), width))
 	}
-	minLevel := minHeadingLevel(d)
+	minLevel := d.MinHeadingLevel
+	if minLevel < 1 || minLevel > 6 {
+		minLevel = 6
+	}
 	for r := first; r < n && len(out) < height; r++ {
 		i := r
 		if f != nil {
@@ -100,14 +106,6 @@ func (t *TOC) Render(d *doc.Doc, f *tocFilter, current int, focused bool, width,
 		out = append(out, strings.Repeat(" ", width))
 	}
 	return out
-}
-
-func minHeadingLevel(d *doc.Doc) int {
-	m := 6
-	for _, h := range d.Headings {
-		m = min(m, h.Level)
-	}
-	return m
 }
 
 // The sidebar's filter narrows the headings as you type, like the file

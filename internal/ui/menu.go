@@ -3,6 +3,8 @@ package ui
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -36,17 +38,18 @@ import (
 // new directory clears them, and refiltering keeps the marks that are still
 // shown.
 type Menu struct {
-	list      // over shown
-	dir       string
-	entries   []entry
-	shown     []int // indexes into entries that pass the hidden and filter rules
-	filter    textinput.Model
-	filtering bool   // the filter input has the keyboard
-	pending   string // the keys so far of a sequence ("g")
-	err       string
-	sel       map[int]bool // marked entry indexes
-	ext       map[int]bool // marks the last extend added, so shrinking it unmarks
-	anchor    int          // shown position the next extend starts from
+	list          // over shown
+	dir           string
+	entries       []entry
+	shown         []int // indexes into entries that pass the hidden and filter rules
+	filter        textinput.Model
+	filtering     bool   // the filter input has the keyboard
+	pending       string // the keys so far of a sequence ("g")
+	err           string
+	sel           map[int]bool // marked entry indexes
+	ext           map[int]bool // marks the last extend added, so shrinking it unmarks
+	anchor        int          // shown position the next extend starts from
+	ignoredLoaded bool         // entries' ignored flags are current
 }
 
 type entry struct {
@@ -106,6 +109,11 @@ func (a *App) menuLoad(dir, sel string) bool {
 		return false
 	}
 	m.dir, m.entries, m.err = dir, es, ""
+	m.ignoredLoaded = false
+	warn := ""
+	if a.menuHideIgnored || a.menuDimIgnored {
+		warn = m.loadIgnored()
+	}
 	m.shown = nil           // indexes the old listing
 	m.sel, m.ext = nil, nil // entries changed: every mark is stale
 	m.filter.SetValue("")
@@ -113,7 +121,33 @@ func (a *App) menuLoad(dir, sel string) bool {
 	m.cursor, m.offset = 0, 0
 	m.refilter(a.menuAll, a.menuHideIgnored, a.menuRows())
 	m.selectName(sel, a.menuRows())
+	if warn != "" {
+		m.err = warn
+	}
 	return true
+}
+
+// loadIgnored asks git which entries are ignored, once per listing. It is
+// only called when the menu actually uses the answer.
+func (a *App) ensureMenuIgnored() {
+	if a.menu == nil || !a.menuHideIgnored && !a.menuDimIgnored {
+		return
+	}
+	if warn := a.menu.loadIgnored(); warn != "" {
+		a.menu.err = warn
+	}
+}
+
+func (m *Menu) loadIgnored() string {
+	if m.ignoredLoaded {
+		return ""
+	}
+	ignored, warn := gitIgnored(m.dir, m.entries)
+	for i := range m.entries {
+		m.entries[i].ignored = ignored[m.entries[i].name]
+	}
+	m.ignoredLoaded = true
+	return warn
 }
 
 // listDir reads dir: directories first, then files, each sorted by name
@@ -134,12 +168,6 @@ func listDir(dir string) ([]entry, error) {
 		}
 		es = append(es, entry{name: name, dir: isDir, hidden: strings.HasPrefix(name, "."), md: !isDir && isMarkdown(name)})
 	}
-	ignored := gitIgnored(dir, es)
-	for i := range es {
-		if ignored[es[i].name] {
-			es[i].ignored = true
-		}
-	}
 	slices.SortFunc(es, func(a, b entry) int {
 		if a.dir != b.dir {
 			return natural.DirsFirst(a.dir)
@@ -153,12 +181,13 @@ func listDir(dir string) ([]entry, error) {
 }
 
 // gitIgnored asks git which entries of dir are ignored. Outside a repository
-// (or without git) nothing is.
-func gitIgnored(dir string, es []entry) map[string]bool {
+// (or without git) nothing is; a real failure (a timeout, say) is returned as
+// a warning so the menu does not silently pretend nothing is ignored.
+func gitIgnored(dir string, es []entry) (map[string]bool, string) {
 	var in bytes.Buffer
 	for _, e := range es {
-		if e.hidden {
-			continue // hidden anyway, and git refuses paths inside .git
+		if e.hidden || e.parent {
+			continue // hidden anyway; .. is not a path to check
 		}
 		in.WriteString(e.name)
 		if e.dir {
@@ -167,20 +196,28 @@ func gitIgnored(dir string, es []entry) map[string]bool {
 		in.WriteByte(0)
 	}
 	if in.Len() == 0 {
-		return nil
+		return nil, ""
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", "-C", dir, "check-ignore", "-z", "--stdin")
 	cmd.Stdin = &in
-	out, _ := cmd.Output() // exit 1 means none ignored, 128 not a repository
+	out, err := cmd.Output()
+	if err != nil {
+		var exit *exec.ExitError
+		// 1: nothing ignored; 128: not a repository. Both are normal.
+		if errors.As(err, &exit) && (exit.ExitCode() == 1 || exit.ExitCode() == 128) {
+			return nil, ""
+		}
+		return nil, "git check-ignore: " + err.Error()
+	}
 	ignored := map[string]bool{}
 	for _, p := range bytes.Split(out, []byte{0}) {
 		if len(p) > 0 {
 			ignored[strings.TrimSuffix(string(p), "/")] = true
 		}
 	}
-	return ignored
+	return ignored, ""
 }
 
 // refilter recomputes the visible entries, keeping the cursor on the same
@@ -219,7 +256,10 @@ func (m *Menu) refilter(showAll, hideIgnored bool, rows int) {
 			}
 		}
 	}
-	m.sel, m.ext = keep, map[int]bool{}
+	if len(keep) == 0 {
+		keep = nil
+	}
+	m.sel, m.ext = keep, nil
 	m.cursor, m.offset = 0, 0
 	m.selectName(sel, rows)
 	m.anchor = m.cursor
@@ -398,11 +438,12 @@ func (m *Menu) markAll() {
 	m.anchor = m.cursor
 }
 
-// menuActivate is l / enter: go into a directory or open the marked files.
-// With marks, every marked file opens along with the file under the cursor
-// when it is not already marked. Directories still just change directory
-// and drop the marks through menuLoad; opening nothing keeps the menu open
-// with the error in the footer.
+// menuActivate is l / enter: go into a directory or open files. With marks,
+// every marked file opens along with the file under the cursor when it is not
+// already marked; O opens only the file under the cursor, since one pane can
+// show one file. Splits all open beside the pane that was focused when the
+// menu action started, so they form a row/column instead of a chain. Opening
+// nothing keeps the menu open with the error in the footer.
 func (a *App) menuActivate(mode openMode) tea.Cmd {
 	m := a.menu
 	e, ok := m.current()
@@ -418,24 +459,51 @@ func (a *App) menuActivate(mode openMode) tea.Cmd {
 		}
 		a.menuLoad(filepath.Join(m.dir, e.name), "")
 	default:
-		targets := m.marked()
-		if cur := m.shown[m.cursor]; m.markable(cur) && !m.sel[cur] {
-			targets = append(targets, cur)
+		cur := m.shown[m.cursor]
+		var targets []int
+		if mode == openReplace {
+			if m.markable(cur) {
+				targets = append(targets, cur)
+			}
+		} else {
+			targets = m.marked()
+			if m.markable(cur) && !m.sel[cur] {
+				targets = append(targets, cur)
+			}
 		}
 		if len(targets) == 0 {
 			return nil
 		}
-		ok := false
-		for _, j := range targets {
-			if a.openAt(filepath.Join(m.dir, m.entries[j].name), mode) {
-				ok = true
-			}
+		var base *Node
+		if mode >= openVSplit && a.pane != nil {
+			base = a.tab().focus
 		}
-		if ok {
+		opened, failed := 0, 0
+		lastErr := ""
+		for _, j := range targets {
+			if base != nil && a.tab() != nil && a.tab().has(base) {
+				a.focusLeaf(base)
+			}
+			if a.openAt(filepath.Join(m.dir, m.entries[j].name), mode) {
+				opened++
+				continue
+			}
+			failed++
+			lastErr = a.msg
+			a.msg = ""
+		}
+		switch {
+		case opened == 0:
+			m.err = lastErr
+			if m.err == "" {
+				m.err = "nothing opened"
+			}
+		default:
 			a.menu = nil
 			a.focus = focusDoc
-		} else {
-			m.err, a.msg = a.msg, ""
+			if failed > 0 {
+				a.msg = fmt.Sprintf("opened %d of %d: %s", opened, opened+failed, lastErr)
+			}
 		}
 	}
 	return nil
@@ -511,7 +579,7 @@ func (a *App) menuView() []string {
 	inner := max(w-2, 1)
 	rows := a.menuRows()
 
-	title := tildePath(m.dir)
+	title := sanitizeLine(tildePath(m.dir))
 	if over := ansi.StringWidth(title) - (inner - 4); over > 0 {
 		title = ansi.TruncateLeft(title, over+1, "…")
 	}
@@ -531,7 +599,7 @@ func (a *App) menuView() []string {
 			j := m.shown[i]
 			line = a.menuEntry(m.entries[j], i == m.cursor, m.sel[j], open[filepath.Join(m.dir, m.entries[j].name)], inner)
 		case i == len(m.shown) && empty && m.err != "":
-			line = th.menuErr.Render(" " + m.err)
+			line = th.menuErr.Render(" " + sanitizeLine(m.err))
 		case i == len(m.shown) && empty && m.filter.Value() != "":
 			line = th.dim.Render(" (no names match)")
 		case i == len(m.shown) && empty:
@@ -545,7 +613,7 @@ func (a *App) menuView() []string {
 	if m.filtering || m.filter.Value() != "" {
 		left = th.barPrompt.Render(" / ") + m.filter.View()
 	} else if m.err != "" && !empty {
-		left = th.menuErr.Render(" " + m.err)
+		left = th.menuErr.Render(" " + sanitizeLine(m.err))
 	} else {
 		all := "all"
 		if a.menuAll {
@@ -598,7 +666,7 @@ func (a *App) menuEntry(e entry, cursor, marked, open bool, width int) string {
 	if open {
 		glyph = "• "
 	}
-	name := e.name
+	name := sanitizeLine(e.name)
 	if e.dir {
 		name += "/"
 	}

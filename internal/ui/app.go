@@ -19,7 +19,7 @@ import (
 )
 
 type Options struct {
-	Style       string // glamour style name or JSON path
+	Style       string // glamour style name, JSON path, or "auto"
 	Dark        bool   // terminal has a dark background
 	MaxWrap     int    // maximum word-wrap width
 	NoTOC       bool   // start with the sidebar hidden
@@ -47,10 +47,13 @@ const (
 const wheelStep = 3
 
 type App struct {
-	opts     Options
-	theme    theme
-	renderer *doc.Renderer
-	showTOC  bool
+	opts      Options
+	theme     theme
+	renderer  *doc.Renderer
+	showTOC   bool
+	tocW      int // cached sidebar width, recomputed on layout
+	tocWOK    bool
+	autoStyle bool // style was "auto": follow the terminal background
 
 	// Tabs and panes; see tabs.go and split.go. pane is the current tab's
 	// focused pane and toc its sidebar state; both are nil only while the
@@ -104,8 +107,19 @@ type App struct {
 // New opens one tab per document, skipping any file given twice. With none,
 // or with opts.MenuDir set, it starts with the file menu open.
 func New(docs []*doc.Doc, opts Options) *App {
+	if opts.MaxWrap <= 0 {
+		opts.MaxWrap = 120 // the settings default; zero would mean "no wrap"
+	}
+	autoStyle := opts.Style == "auto"
+	if autoStyle {
+		opts.Style = "dark"
+		if !opts.Dark {
+			opts.Style = "light"
+		}
+	}
 	a := &App{
 		opts:            opts,
+		autoStyle:       autoStyle,
 		theme:           newTheme(opts.Dark, opts.Style, opts.Colors),
 		renderer:        doc.NewRenderer(opts.Style),
 		keymap:          opts.Keymap,
@@ -140,7 +154,46 @@ func New(docs []*doc.Doc, opts Options) *App {
 	return a
 }
 
-func (a *App) Init() tea.Cmd { return nil }
+func (a *App) Init() tea.Cmd {
+	// Ask the terminal in the background; a terminal that does not answer
+	// OSC 11 simply keeps the dark default instead of delaying start-up.
+	return func() tea.Msg { return tea.RequestBackgroundColor() }
+}
+
+// setBackground follows the terminal background: an auto style switches the
+// glamour style too, and every pane renders again; a fixed style only changes
+// the UI defaults that suit the background.
+func (a *App) setBackground(dark bool) {
+	if dark == a.opts.Dark {
+		return
+	}
+	a.opts.Dark = dark
+	style := a.opts.Style
+	if a.autoStyle {
+		style = "dark"
+		if !dark {
+			style = "light"
+		}
+		a.opts.Style = style
+		a.renderer = doc.NewRenderer(style)
+	}
+	a.theme = newTheme(dark, style, a.opts.Colors)
+	a.input.SetStyles(textinput.DefaultStyles(dark))
+	a.tocFilter.input.SetStyles(textinput.DefaultStyles(dark))
+	if a.menu != nil {
+		a.menu.filter.SetStyles(textinput.DefaultStyles(dark))
+	}
+	if a.help != nil {
+		a.help.search.SetStyles(textinput.DefaultStyles(dark))
+	}
+	a.helpCache = nil
+	if a.autoStyle {
+		for _, p := range a.allPanes() {
+			p.view = nil
+		}
+	}
+	a.layout()
+}
 
 // bodyHeight is the height of the document and sidebar: the screen minus the
 // tab bar, status line, search bar and results panel.
@@ -154,10 +207,14 @@ func (a *App) tocWidth() int {
 	if !a.showTOC || a.pane == nil {
 		return 0
 	}
+	if a.tocWOK {
+		return a.tocW
+	}
 	w := 0
 	for _, l := range a.tab().leaves() {
 		w = max(w, l.pane.toc.Width(l.pane.doc, a.width))
 	}
+	a.tocW, a.tocWOK = w, true
 	return w
 }
 
@@ -172,6 +229,7 @@ func (a *App) bodyX() int {
 // layout sizes and re-renders the current tab's panes after a resize, a
 // split or a sidebar toggle.
 func (a *App) layout() {
+	a.tocWOK = false
 	if a.pane == nil || a.width == 0 {
 		return
 	}
@@ -228,6 +286,8 @@ func (a *App) fitInputs() {
 
 func (a *App) update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
+	case tea.BackgroundColorMsg:
+		a.setBackground(msg.IsDark())
 	case tea.WindowSizeMsg:
 		a.width, a.height = msg.Width, msg.Height
 		a.layout()
@@ -272,7 +332,9 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 	case editDoneMsg:
 		return a.editDone(msg)
 	case searchDoneMsg:
-		a.searchDone(msg)
+		return a.searchDone(msg)
+	case indexedMsg:
+		return a.matchesIndexed(msg)
 	default:
 		if a.help != nil && a.help.typing {
 			var cmd tea.Cmd
@@ -559,7 +621,7 @@ func (a *App) click(m tea.Mouse) tea.Cmd {
 	if row, ok := a.inPanel(m); ok {
 		if i := a.results.At(row); i >= 0 {
 			a.results.Select(i, a.resultRows())
-			a.openResult(openNewTab)
+			return a.openResult(openNewTab)
 		}
 		return nil
 	}
@@ -658,14 +720,14 @@ func (a *App) statusLine() string {
 		mode = th.statusModeSearch.Render(" RESULTS ")
 	}
 	if a.pane == nil {
-		return fit(mode+th.status.Render(" "+a.msg+strings.Repeat(" ", a.width)), a.width)
+		return fit(mode+th.status.Render(" "+sanitizeLine(a.msg)+strings.Repeat(" ", a.width)), a.width)
 	}
-	left := mode + th.status.Render(" "+a.pane.doc.Name+" ")
+	left := mode + th.status.Render(" "+sanitizeLine(a.pane.doc.Name)+" ")
 	if len(a.tabs) > 1 && a.tabBarHeight() == 0 {
 		left += th.statusDim.Render("[" + strconv.Itoa(a.cur+1) + "/" + strconv.Itoa(len(a.tabs)) + "] ")
 	}
 	if a.msg != "" {
-		left += th.statusDim.Render(" " + a.msg + " ")
+		left += th.statusDim.Render(" " + sanitizeLine(a.msg) + " ")
 	}
 
 	keys := displayKey(a.pending)

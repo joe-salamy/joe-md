@@ -7,11 +7,14 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
@@ -42,6 +45,27 @@ type Doc struct {
 	Blocks   []Block
 	Headings []Heading
 	renders  []string // the markdown handed to glamour for each block
+
+	// MinHeadingLevel is the smallest heading level, or 6 when there are
+	// none: the sidebar indents relative to it.
+	MinHeadingLevel int
+	hash            uint64 // content fingerprint, for scrollbind
+}
+
+// SameContent reports whether d and o hold the same source text. It is for
+// panes that were split from one file but hold separate loads; a nil Doc
+// never matches.
+func (d *Doc) SameContent(o *Doc) bool {
+	if d == o {
+		return true
+	}
+	if d == nil || o == nil {
+		return false
+	}
+	if d.hash != 0 && o.hash != 0 {
+		return d.hash == o.hash
+	}
+	return bytes.Equal(d.Source, o.Source)
 }
 
 // ref is a link reference definition: its label, normalised as normLabel
@@ -82,7 +106,7 @@ var md = goldmark.New(goldmark.WithExtensions(extension.GFM, extension.Definitio
 
 // Parse splits src into top-level blocks.
 func Parse(orig []byte) *Doc {
-	src := blankFrontMatter(orig)
+	src := sanitizeControls(blankFrontMatter(orig))
 	lineStarts := []int{0}
 	for i, c := range src {
 		if c == '\n' && i+1 < len(src) {
@@ -170,7 +194,49 @@ func Parse(orig []byte) *Doc {
 		d.Blocks = append(d.Blocks, b)
 		d.renders = append(d.renders, withRefs(b.Text, refs))
 	}
+	d.MinHeadingLevel = 6
+	for _, h := range d.Headings {
+		d.MinHeadingLevel = min(d.MinHeadingLevel, h.Level)
+	}
+	h := fnv.New64a()
+	_, _ = h.Write(orig)
+	d.hash = h.Sum64()
 	return d
+}
+
+// sanitizeControls replaces terminal control characters (notably ESC, which
+// starts ANSI and OSC sequences) with spaces before the source is parsed and
+// rendered, so a document cannot drive the terminal. Newlines, carriage
+// returns and tabs are kept: they are ordinary markdown.
+func sanitizeControls(src []byte) []byte {
+	clean := true
+	for i := 0; i < len(src); {
+		r, size := utf8.DecodeRune(src[i:])
+		if isTerminalControl(r) {
+			clean = false
+			break
+		}
+		i += size
+	}
+	if clean {
+		return src
+	}
+	var b strings.Builder
+	b.Grow(len(src))
+	for i := 0; i < len(src); {
+		r, size := utf8.DecodeRune(src[i:])
+		if isTerminalControl(r) {
+			b.WriteByte(' ')
+		} else {
+			b.Write(src[i : i+size])
+		}
+		i += size
+	}
+	return []byte(b.String())
+}
+
+func isTerminalControl(r rune) bool {
+	return unicode.IsControl(r) && r != '\n' && r != '\r' && r != '\t'
 }
 
 // isStandaloneBold reports whether p is a single bold span and nothing else:
@@ -204,6 +270,9 @@ func (d *Doc) renderText(i int) string {
 // its text). Leaving out the rest keeps a block's text, and so its place in
 // the render cache, the same when an unrelated definition changes.
 func withRefs(text string, refs []ref) string {
+	if len(refs) == 0 {
+		return text
+	}
 	norm := normLabel(text)
 	var used []string
 	for _, r := range refs {

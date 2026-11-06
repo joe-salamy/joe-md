@@ -80,7 +80,7 @@ func TestRun(t *testing.T) {
 		t.Fatalf("dir search (markdown only, case-insensitive): %+v", res)
 	}
 
-	res, err = Run(ctx, Request{Query: "setup", Scope: Dir, Root: dir, Limit: 1})
+	res, err = Run(ctx, Request{Query: "setup", Scope: Dir, Root: dir, limit: 1})
 	if err != nil || len(res.Matches) != 1 || !res.Truncated {
 		t.Fatalf("limit: %+v %v", res, err)
 	}
@@ -296,5 +296,34 @@ func TestRunExcludeGlobs(t *testing.T) {
 	res, err = Run(context.Background(), Request{Query: "lawyer", Scope: File, Root: filepath.Join(dir, "skipme", "drop.md"), Exclude: []string{"skipme"}})
 	if err != nil || len(res.Matches) != 1 {
 		t.Fatalf("file search of an excluded file: %+v %v", res, err)
+	}
+}
+
+// The menu treats .mdtext and .mdtxt as markdown; a dir search must too.
+func TestRunSearchesMdtextFiles(t *testing.T) {
+	if _, err := exec.LookPath("rg"); err != nil {
+		t.Skip("rg not installed")
+	}
+	dir := t.TempDir()
+	for name := range map[string]bool{"a.md": true, "b.mdtxt": true, "c.mdtext": true, "d.txt": true} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("needle\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, err := Run(context.Background(), Request{Query: "needle", Scope: Dir, Root: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Files != 3 || len(res.Matches) != 3 {
+		t.Fatalf("markdown extensions: %+v", res)
+	}
+}
+
+// Terms clamps spans instead of panicking on a malformed Match.
+func TestTermsClampsSpans(t *testing.T) {
+	m := Match{Text: "abcdef", Spans: [][2]int{{-2, 3}, {4, 99}, {2, 2}}}
+	got := m.Terms()
+	if len(got) != 2 || got[0] != "abc" || got[1] != "ef" {
+		t.Fatalf("Terms = %q", got)
 	}
 }

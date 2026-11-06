@@ -155,7 +155,7 @@ keys; `enter` keeps the filter), `esc` clears the search, then closes; `q` close
 | `ctrl+g`                     | show the file's full path           |
 | `yn` `yp` `yf`               | copy the file's name / full path / contents to the clipboard |
 | `o`                          | open the file menu                  |
-| `q`                          | kill the search if there is one; else close the pane, else the tab; quits on the last one (the only way) |
+| `q`                          | kill the search if there is one; else close the pane, else the tab; quits on the last one (`Q` and `ctrl+c` also quit) |
 | `Q` `ctrl+c`                 | quit                                |
 
 ### Tabs
@@ -253,7 +253,7 @@ files that are already open, and the files you picked are highlighted.
 | `space` `t`                  | mark / unmark the file              |
 | `gg` `G`                     | first / last entry                  |
 | `l` `enter` `→`              | enter the directory, or open the marked files in new tabs |
-| `O`                          | open the marked files in the focused pane instead |
+| `O`                          | open the file under the cursor in the focused pane |
 | `v` `s`                      | open the marked files in a new pane beside / below |
 | `h` `-` `backspace` `←`      | parent directory                    |
 | `~` `gh`                     | home directory                      |
@@ -292,8 +292,9 @@ sticks for later searches (`search.literal = false` in the settings file
 starts in regex mode). Case is ignored unless the settings file says
 otherwise. It runs only
 when you press `enter`, never while you type, and in the background, so big
-files and repos never make typing lag. Placing thousands of matches in the
-rendered text happens in the background too.
+files and repos never make typing lag. Placing the matches in the rendered
+text happens in the background too (a resize re-indexes the pane before its
+next frame).
 
 | Key in the search bar        | Action                              |
 |------------------------------|-------------------------------------|

@@ -1,6 +1,7 @@
 package doc
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -221,5 +222,45 @@ func TestRendererKeepsSeveralWidths(t *testing.T) {
 	}
 	if len(r.widths) != maxWidths || len(r.cache) != maxWidths {
 		t.Errorf("cache grew past %d widths: %v", maxWidths, r.widths)
+	}
+}
+
+// Control sequences in a document are neutralised before rendering, while
+// Source keeps the original for copy-contents.
+func TestControlSequencesAreNeutralised(t *testing.T) {
+	src := []byte("# Title\x1b]52;c;ZXZpbA==\x07\n\ntext\n")
+	d := Parse(src)
+	if !bytes.Contains(d.Source, []byte("\x1b")) {
+		t.Fatal("Source should keep the original text")
+	}
+	if strings.Contains(d.Headings[0].Text, "\x1b") {
+		t.Fatalf("heading kept a control sequence: %q", d.Headings[0].Text)
+	}
+	r, err := NewRenderer("notty").Render(d, 60)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.Join(r.Lines, "\n"), "\x1b") {
+		t.Fatal("rendered output contains an escape sequence")
+	}
+}
+
+func TestMinHeadingLevel(t *testing.T) {
+	if got := Parse([]byte("### H\n\n## H2\n")).MinHeadingLevel; got != 2 {
+		t.Errorf("min level = %d, want 2", got)
+	}
+	if got := Parse([]byte("no headings\n")).MinHeadingLevel; got != 6 {
+		t.Errorf("min level with no headings = %d, want 6", got)
+	}
+}
+
+func TestSameContent(t *testing.T) {
+	a, b, c := Parse([]byte("same\n")), Parse([]byte("same\n")), Parse([]byte("other\n"))
+	if !a.SameContent(b) || a.SameContent(c) {
+		t.Error("SameContent should compare the source text")
+	}
+	var nilDoc *Doc
+	if a.SameContent(nilDoc) || nilDoc.SameContent(a) {
+		t.Error("a nil Doc should never match")
 	}
 }

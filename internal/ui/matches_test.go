@@ -337,3 +337,24 @@ func TestMatchesStepThroughOccurrences(t *testing.T) {
 		t.Fatalf("result 2/0: cur %d", p.match.cur)
 	}
 }
+
+// A re-index that finds fewer occurrences drops an out-of-range current match
+// instead of reporting e.g. 3/2.
+func TestReindexClampsCurrent(t *testing.T) {
+	p := testPane(t, "one needle two needle three\n")
+	m := newMatches(search.Request{Query: "needle"}, []search.Match{{
+		Line: 1, Text: "one needle two needle three", Spans: [][2]int{{4, 10}, {15, 21}},
+	}})
+	p.setMatches(m)
+	if len(m.occs) != 2 {
+		t.Fatalf("occurrences = %d", len(m.occs))
+	}
+	m.cur = 5
+	m.index(p.doc, p.view)
+	if m.cur != -1 {
+		t.Fatalf("cur = %d after re-index, want -1", m.cur)
+	}
+	if cur, total := p.MatchPos(); cur != 0 || total != 2 {
+		t.Fatalf("MatchPos = %d/%d", cur, total)
+	}
+}

@@ -141,3 +141,49 @@ func TestReopenPaneOfClosedTab(t *testing.T) {
 		t.Fatalf("a pane whose tab is gone gets a new tab: %q, tab %d", got, a.cur+1)
 	}
 }
+
+// A closed pane's rendered lines are dropped, but its scroll position is kept
+// and restored when it is reopened.
+func TestReopenKeepsScrollPosition(t *testing.T) {
+	dir := fixture(t)
+	var sb strings.Builder
+	for i := range 200 {
+		sb.WriteString("paragraph " + fmt.Sprint(i) + "\n\n")
+	}
+	long := filepath.Join(dir, "long.md")
+	if err := os.WriteFile(long, []byte(sb.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := newTestApp(t, filepath.Join(dir, "a.md"), long)
+	a.activate(1)
+	a.pane.ScrollTo(30)
+	top := a.pane.TopSource()
+	press(a, "x")
+	if tabNames(a) != "a.md" {
+		t.Fatalf("after close: %q", tabNames(a))
+	}
+	press(a, "X")
+	if a.pane == nil || a.pane.doc.Name != "long.md" {
+		t.Fatalf("reopened %v", a.pane != nil)
+	}
+	if got := a.pane.TopSource(); got != top {
+		t.Fatalf("reopened at source line %d, want %d", got, top)
+	}
+}
+
+// A closed tab whose file is gone is skipped, as the README says.
+func TestReopenSkipsDeletedTab(t *testing.T) {
+	dir := fixture(t)
+	a := newTestApp(t, filepath.Join(dir, "a.md"), filepath.Join(dir, "b.md"))
+	press(a, "x") // close a.md, leaving b.md
+	if err := os.Remove(filepath.Join(dir, "a.md")); err != nil {
+		t.Fatal(err)
+	}
+	press(a, "X")
+	if got := tabNames(a); got != "b.md" {
+		t.Fatalf("deleted tab reopened: %q", got)
+	}
+	if !strings.HasPrefix(a.msg, "reopen:") {
+		t.Fatalf("msg = %q", a.msg)
+	}
+}

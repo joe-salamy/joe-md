@@ -208,9 +208,9 @@ func init() {
 		&action{name: "toggle_results", desc: "open / close the results list", keys: keys("g r"),
 			run: do(func(a *App, c call) { a.toggleResults() })},
 		&action{name: "next_result", desc: "next result, in the focused pane", row: "next / previous result, in the focused pane", keys: keys("] q"),
-			run: docOnly(func(a *App, c call) { a.stepResult(c.n) })},
+			run: docCmd(func(a *App, c call) tea.Cmd { return a.stepResult(c.n) })},
 		&action{name: "prev_result", desc: "previous result, in the focused pane", row: "next / previous result, in the focused pane", keys: keys("[ q"),
-			run: docOnly(func(a *App, c call) { a.stepResult(-c.n) })},
+			run: docCmd(func(a *App, c call) tea.Cmd { return a.stepResult(-c.n) })},
 		&action{name: "clear_search", desc: "kill the search: no more highlights or results", keys: keys("esc"),
 			run: do(func(a *App, c call) { a.killSearch() })},
 		&action{name: "toggle_search_bar", desc: "show / hide the search bar", keys: keys("alt+s"),
@@ -264,13 +264,13 @@ func init() {
 				return r.Len() - 1
 			})},
 		&action{name: "open", desc: "open in a new tab", keys: keys("enter", "l"),
-			run: do(func(a *App, c call) { a.openResult(openNewTab) })},
+			run: func(a *App, c call) tea.Cmd { return a.openResult(openNewTab) }},
 		&action{name: "open_here", desc: "open in the focused pane", keys: keys("O"),
-			run: do(func(a *App, c call) { a.openResult(openReplace) })},
+			run: func(a *App, c call) tea.Cmd { return a.openResult(openReplace) }},
 		&action{name: "open_vsplit", desc: "open in a new pane beside", row: "open in a new pane beside / below", keys: keys("v"),
-			run: do(func(a *App, c call) { a.openResult(openVSplit) })},
+			run: func(a *App, c call) tea.Cmd { return a.openResult(openVSplit) }},
 		&action{name: "open_hsplit", desc: "open in a new pane below", row: "open in a new pane beside / below", keys: keys("s"),
-			run: do(func(a *App, c call) { a.openResult(openHSplit) })},
+			run: func(a *App, c call) tea.Cmd { return a.openResult(openHSplit) }},
 		&action{name: "close", desc: "close the list, killing the search too", keys: keys("q", "esc"),
 			run: do(func(a *App, c call) { a.killSearch() })},
 	)
@@ -500,10 +500,14 @@ func init() {
 		&action{name: "toggle_ignored", desc: "show / hide files ignored by git", keys: keys("alt+."),
 			run: do(func(a *App, c call) {
 				a.menuHideIgnored = !a.menuHideIgnored
+				a.ensureMenuIgnored()
 				a.menu.refilter(a.menuAll, a.menuHideIgnored, a.menuRows())
 			})},
 		&action{name: "toggle_dim", desc: "gray / un-gray files ignored by git", keys: keys("i"),
-			run: do(func(a *App, c call) { a.menuDimIgnored = !a.menuDimIgnored })},
+			run: do(func(a *App, c call) {
+				a.menuDimIgnored = !a.menuDimIgnored
+				a.ensureMenuIgnored()
+			})},
 		&action{name: "refresh", desc: "re-read the directory", keys: keys("r"),
 			run: do(func(a *App, c call) {
 				sel := ""

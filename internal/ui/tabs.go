@@ -228,6 +228,7 @@ func (a *App) tabLabels() []string {
 		if count[name] > 1 {
 			name = filepath.Join(filepath.Base(filepath.Dir(d.Path)), name)
 		}
+		name = sanitizeLine(name)
 		out[i] = " " + strconv.Itoa(i+1) + " " + ansi.Truncate(name, tabMaxName, "…")
 		if n := len(t.leaves()); n > 1 {
 			out[i] += " +" + strconv.Itoa(n-1) // the tab's other panes
