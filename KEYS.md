@@ -82,7 +82,7 @@ explains each feature.
 | `gt/gT`   | next / previous tab, or tab n                                  | `normal.next_tab` / `prev_tab`            |
 | `alt+1…9` | tab 1 … 9                                                      | `normal.tab_n`                            |
 | `<</>>`   | move the tab n places left / right                             | `normal.move_tab_left` / `move_tab_right` |
-| `x`       | close the tab (not the last one)                               | `normal.close_tab`                        |
+| `x`       | close the tab                                                  | `normal.close_tab`                        |
 | `X`       | reopen the last closed tab or pane where it was, or the last n | `normal.reopen`                           |
 | `alt+t`   | show / hide the tab bar                                        | `normal.toggle_tab_bar`                   |
 
@@ -138,7 +138,7 @@ Other keys edit the filter, which matches as you type; the search bar's line-edi
 
 | Key          | Action                                                                        | Name              |
 |--------------|-------------------------------------------------------------------------------|-------------------|
-| `q`          | kill the search if there is one, else close the pane, then the tab, then quit | `normal.quit`     |
+| `q`          | kill the search if there is one, else close the pane, then the tab, else quit | `normal.quit`     |
 | `Q` `ctrl+c` | quit                                                                          | `normal.quit_all` |
 
 ## Help
