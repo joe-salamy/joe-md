@@ -299,13 +299,14 @@ func TestRunExcludeGlobs(t *testing.T) {
 	}
 }
 
-// The menu treats .mdtext and .mdtxt as markdown; a dir search must too.
-func TestRunSearchesMdtextFiles(t *testing.T) {
+// The menu treats .mdtext and .mdtxt as markdown, and lists .txt files; a
+// dir search must cover them too.
+func TestRunSearchesMenuFiles(t *testing.T) {
 	if _, err := exec.LookPath("rg"); err != nil {
 		t.Skip("rg not installed")
 	}
 	dir := t.TempDir()
-	for name := range map[string]bool{"a.md": true, "b.mdtxt": true, "c.mdtext": true, "d.txt": true} {
+	for name := range map[string]bool{"a.md": true, "b.mdtxt": true, "c.mdtext": true, "d.txt": true, "e.json": true} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte("needle\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -314,8 +315,8 @@ func TestRunSearchesMdtextFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Files != 3 || len(res.Matches) != 3 {
-		t.Fatalf("markdown extensions: %+v", res)
+	if res.Files != 4 || len(res.Matches) != 4 {
+		t.Fatalf("menu extensions: %+v", res)
 	}
 }
 

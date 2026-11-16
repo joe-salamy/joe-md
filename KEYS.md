@@ -165,7 +165,7 @@ Other keys edit the filter, which matches as you type; the search bar's line-edi
 | `h` `left` `-` `backspace`           | parent directory                                          | `menu.parent`                      |
 | `~` `gh`                             | home directory                                            | `menu.home`                        |
 | `gr`                                 | root of the git repository                                | `menu.repo_root`                   |
-| `.`                                  | show / hide hidden and non-markdown files                 | `menu.toggle_all`                  |
+| `.`                                  | show / hide hidden and other files                        | `menu.toggle_all`                  |
 | `alt+.`                              | show / hide files ignored by git                          | `menu.toggle_ignored`              |
 | `i`                                  | gray / un-gray files ignored by git                       | `menu.toggle_dim`                  |
 | `r`                                  | re-read the directory                                     | `menu.refresh`                     |

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/joe-salamy/joe-md/internal/doc"
 	"github.com/joe-salamy/joe-md/internal/natural"
 
 	"charm.land/bubbles/v2/textinput"
@@ -58,7 +59,7 @@ type entry struct {
 	parent  bool // the ../ entry
 	hidden  bool // a dotfile
 	ignored bool // ignored by git
-	md      bool
+	doc     bool // a markdown or plain-text file, listed by default
 }
 
 var markdownExts = map[string]bool{
@@ -66,7 +67,10 @@ var markdownExts = map[string]bool{
 	".mkdn": true, ".mdx": true, ".mdtext": true, ".mdtxt": true,
 }
 
-func isMarkdown(name string) bool { return markdownExts[strings.ToLower(filepath.Ext(name))] }
+// isDoc reports whether the file is one joe-md reads: markdown or plain text.
+func isDoc(name string) bool {
+	return markdownExts[strings.ToLower(filepath.Ext(name))] || doc.IsPlainText(name)
+}
 
 // openMenu pops the menu up at dir with the cursor on the entry named sel.
 func (a *App) openMenu(dir, sel string) tea.Cmd {
@@ -166,7 +170,7 @@ func listDir(dir string) ([]entry, error) {
 				isDir = fi.IsDir()
 			}
 		}
-		es = append(es, entry{name: name, dir: isDir, hidden: strings.HasPrefix(name, "."), md: !isDir && isMarkdown(name)})
+		es = append(es, entry{name: name, dir: isDir, hidden: strings.HasPrefix(name, "."), doc: !isDir && isDoc(name)})
 	}
 	slices.SortFunc(es, func(a, b entry) int {
 		if a.dir != b.dir {
@@ -237,7 +241,7 @@ func (m *Menu) refilter(showAll, hideIgnored bool, rows int) {
 			continue
 		case hideIgnored && !e.parent && e.ignored:
 			continue
-		case !showAll && !e.parent && (e.hidden || !e.dir && !e.md):
+		case !showAll && !e.parent && (e.hidden || !e.dir && !e.doc):
 			continue
 		}
 		if hasTerms(e.name, terms) {
@@ -603,7 +607,7 @@ func (a *App) menuView() []string {
 		case i == len(m.shown) && empty && m.filter.Value() != "":
 			line = th.dim.Render(" (no names match)")
 		case i == len(m.shown) && empty:
-			line = th.dim.Render(" (nothing here · . shows hidden and non-markdown files)")
+			line = th.dim.Render(" (nothing here · . shows hidden and other files)")
 		}
 		lines = append(lines, line)
 	}
@@ -683,7 +687,7 @@ func (a *App) menuEntry(e entry, cursor, marked, open bool, width int) string {
 	}
 	style := th.menuFile
 	switch {
-	case e.hidden || !e.dir && !e.md:
+	case e.hidden || !e.dir && !e.doc:
 		style = th.dim
 	case e.ignored && a.menuDimIgnored:
 		style = th.dim

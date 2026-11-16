@@ -259,7 +259,7 @@ func hasUpper(term string, literal bool) bool {
 	return false
 }
 
-// Run searches with ripgrep. Directory scopes only search markdown files; a
+// Run searches with ripgrep. Directory scopes only search markdown and .txt files; a
 // single file, and the open scope's explicit files, are searched whatever
 // their extension. It stops as soon as more than the limit of lines match.
 func Run(parent context.Context, req Request) (Result, error) {
@@ -308,9 +308,9 @@ func args(req Request) []string {
 	out := []string{caseArg, "--no-ignore"}
 	if req.Scope != File && req.Scope != Open {
 		// ripgrep's markdown type omits the extensions the file menu also
-		// treats as markdown; add a type for them so a dir/repo search sees
-		// the files the menu lists.
-		out = append(out, "--type-add", "joemd:*.mdtext", "--type-add", "joemd:*.mdtxt", "-t", "markdown", "-t", "joemd")
+		// treats as markdown; add a type for them, and search plain text
+		// too, so a dir/repo search sees the files the menu lists.
+		out = append(out, "--type-add", "joemd:*.mdtext", "--type-add", "joemd:*.mdtxt", "-t", "markdown", "-t", "joemd", "-t", "txt")
 	}
 	for _, e := range req.Exclude {
 		out = append(out, "-g", "!"+e)

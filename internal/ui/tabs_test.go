@@ -13,11 +13,11 @@ import (
 
 // fixture makes a small tree:
 //
-//	a.md  b.md  notes.txt  .hidden.md  docs/c.md  docs/sub/d.md
+//	a.md  b.md  data.json  .hidden.md  docs/c.md  docs/sub/d.md
 func fixture(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	for _, f := range []string{"a.md", "b.md", "notes.txt", ".hidden.md", "docs/c.md", "docs/sub/d.md"} {
+	for _, f := range []string{"a.md", "b.md", "data.json", ".hidden.md", "docs/c.md", "docs/sub/d.md"} {
 		p := filepath.Join(dir, f)
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatal(err)
@@ -161,12 +161,15 @@ func TestTabsOpenDedupeClose(t *testing.T) {
 
 func TestMenu(t *testing.T) {
 	dir := fixture(t)
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("plain\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	a := newTestApp(t, filepath.Join(dir, "b.md"))
 	press(a, "o")
 	if a.menu == nil || a.menu.dir != dir {
 		t.Fatalf("menu not open at %s", dir)
 	}
-	if got := menuNames(a); got != ".. docs a.md b.md" {
+	if got := menuNames(a); got != ".. docs a.md b.md notes.txt" {
 		t.Fatalf("listing %q", got)
 	}
 	if e, _ := a.menu.current(); e.name != "b.md" {
@@ -174,7 +177,7 @@ func TestMenu(t *testing.T) {
 	}
 
 	press(a, ".")
-	if got := menuNames(a); got != ".. docs .hidden.md a.md b.md notes.txt" {
+	if got := menuNames(a); got != ".. docs .hidden.md a.md b.md data.json notes.txt" {
 		t.Fatalf("show all: %q", got)
 	}
 	press(a, ".")

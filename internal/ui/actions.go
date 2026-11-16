@@ -492,7 +492,7 @@ func init() {
 					a.menu.err = "not in a git repository"
 				}
 			})},
-		&action{name: "toggle_all", desc: "show / hide hidden and non-markdown files", keys: keys("."),
+		&action{name: "toggle_all", desc: "show / hide hidden and other files", keys: keys("."),
 			run: do(func(a *App, c call) {
 				a.menuAll = !a.menuAll
 				a.menu.refilter(a.menuAll, a.menuHideIgnored, a.menuRows())

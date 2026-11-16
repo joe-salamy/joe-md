@@ -6,6 +6,9 @@ search, tabs, split panes and a pop-up file menu.
 
 Rendering uses [glamour](https://github.com/charmbracelet/glamour), the
 library behind glow, so documents look the same as they do in glow.
+Plain-text `.txt` files are shown as written, line for line and wrapped to
+the window, not rendered as markdown: their line breaks are kept and
+characters like `*` and `#` stay as they are.
 
 ## Install
 
@@ -239,7 +242,7 @@ and stays in the sidebar; `ctrl+c` clears the filter (again to stop).
 
 `o` pops up a file browser at the current file's directory, with the cursor
 on that file. It lists one directory at a time, like lf: directories first,
-then markdown files, including files ignored by git. Hidden files and other
+then markdown and `.txt` files, including files ignored by git. Hidden files and other
 files are left out until you press `.`, which shows them dimmed. `alt+.`
 hides files ignored by git again. Press `i` to gray out the names of files
 ignored by git (off by default; `menu.dim_ignored` turns it on). A `•` marks
@@ -258,7 +261,7 @@ files that are already open, and the files you picked are highlighted.
 | `h` `-` `backspace` `←`      | parent directory                    |
 | `~` `gh`                     | home directory                      |
 | `gr`                         | root of the git repository          |
-| `.`                          | show / hide hidden and non-markdown files |
+| `.`                          | show / hide hidden and other files |
 | `alt+.`                      | show / hide files ignored by git |
 | `i`                          | gray / un-gray files ignored by git |
 | `/`                          | filter names (`enter` opens the selection, `esc` clears) |
@@ -312,7 +315,7 @@ next frame).
 Scopes: **file** is the open file; **open** is every open file, in tab order
 (`g b` starts one directly); **dir** is its directory, recursively;
 **repo** is the enclosing git repository (the nearest `.git`), or the directory
-outside one. Directory scopes search markdown files only, including files
+outside one. Directory scopes search markdown and `.txt` files only, including files
 ignored by git; `search.exclude` in the settings file skips paths (gitignore
 globs, e.g. `node_modules`) in dir/repo/open searches. Hidden files stay
 skipped.

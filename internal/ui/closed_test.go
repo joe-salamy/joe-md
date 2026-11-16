@@ -103,7 +103,7 @@ func TestReopenPanes(t *testing.T) {
 
 	// A pane closed in a tab that was closed after it comes back after the tab.
 	press(a, "q") // d
-	a.openAt(p("notes.txt"), openNewTab)
+	a.openAt(p("data.json"), openNewTab)
 	press(a, "1", "g", "t", "x")
 	press(a, "X")
 	if got := paneNames(a); got != "a.md b.md *c.md" {

@@ -1,6 +1,6 @@
 // Package doc parses markdown into top-level blocks with exact source line
 // ranges, renders them with glamour, and maps between source and rendered
-// line numbers.
+// line numbers. Plain-text files are one block per line, shown as written.
 package doc
 
 import (
@@ -50,6 +50,10 @@ type Doc struct {
 	// none: the sidebar indents relative to it.
 	MinHeadingLevel int
 	hash            uint64 // content fingerprint, for scrollbind
+
+	// plain is a plain-text file: one block per line, shown as written
+	// instead of rendered as markdown.
+	plain bool
 }
 
 // SameContent reports whether d and o hold the same source text. It is for
@@ -75,9 +79,14 @@ type ref struct{ label, text string }
 // ErrBinary is Load's error for a file that isn't text.
 var ErrBinary = errors.New("not a text file")
 
-// Load reads and parses the markdown file at path. The doc's path is
-// absolute, so file identity, display and editing never depend on how the
-// file was named on its way in.
+// IsPlainText reports whether the file name is a plain-text file, which is
+// shown as written rather than rendered as markdown: its line breaks, and
+// characters like * and #, mean nothing to markdown.
+func IsPlainText(name string) bool { return strings.EqualFold(filepath.Ext(name), ".txt") }
+
+// Load reads and parses the file at path, as markdown or, for a plain-text
+// file, as plain text. The doc's path is absolute, so file identity, display
+// and editing never depend on how the file was named on its way in.
 func Load(path string) (*Doc, error) {
 	src, err := os.ReadFile(path)
 	if err != nil {
@@ -86,7 +95,12 @@ func Load(path string) (*Doc, error) {
 	if isBinary(src) {
 		return nil, fmt.Errorf("%s is %w", filepath.Base(path), ErrBinary)
 	}
-	d := Parse(src)
+	var d *Doc
+	if IsPlainText(path) {
+		d = ParsePlain(src)
+	} else {
+		d = Parse(src)
+	}
 	if abs, err := filepath.Abs(path); err == nil {
 		path = abs
 	}
@@ -98,6 +112,22 @@ func Load(path string) (*Doc, error) {
 // isBinary guesses like git does: a NUL byte near the start.
 func isBinary(b []byte) bool {
 	return bytes.IndexByte(b[:min(len(b), 8000)], 0) >= 0
+}
+
+// ParsePlain splits plain text into one block per line, so source and
+// rendered lines map exactly and blank lines are kept.
+func ParsePlain(orig []byte) *Doc {
+	src := sanitizeControls(orig)
+	lines := strings.Split(strings.TrimSuffix(string(src), "\n"), "\n")
+	d := &Doc{Source: orig, Lines: len(lines), MinHeadingLevel: 6, plain: true}
+	d.Blocks = make([]Block, len(lines))
+	for i, l := range lines {
+		d.Blocks[i] = Block{SrcStart: i, SrcEnd: i + 1, Next: i + 1, Text: strings.ReplaceAll(l, "\r", "")}
+	}
+	h := fnv.New64a()
+	_, _ = h.Write(orig)
+	d.hash = h.Sum64()
+	return d
 }
 
 // md must use the same block-level extensions glamour uses so that our block

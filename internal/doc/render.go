@@ -75,6 +75,9 @@ func (r *Renderer) Render(d *Doc, width int) (*Rendered, error) {
 	if width < 10 {
 		width = 10
 	}
+	if d.plain {
+		return renderPlain(d, width), nil
+	}
 	texts := make([]string, len(d.Blocks))
 	var todo []string
 	seen := map[string]bool{}
@@ -108,6 +111,51 @@ func (r *Renderer) Render(d *Doc, width int) (*Rendered, error) {
 		}
 	}
 	return out, nil
+}
+
+// plainMargin is the left margin of plain text, the same as glamour's
+// built-in styles give a markdown document.
+const plainMargin = "  "
+
+// renderPlain lays out a plain-text doc as written: each line wrapped to the
+// width, with no blank line between blocks since each block is one line.
+func renderPlain(d *Doc, width int) *Rendered {
+	limit := width - 2*len(plainMargin)
+	out := &Rendered{Lines: make([]string, 1, len(d.Blocks)+2), spans: make([]span, len(d.Blocks))}
+	for i, b := range d.Blocks {
+		s := span{RenStart: len(out.Lines)}
+		for l := range strings.SplitSeq(ansi.Wrap(expandTabs(b.Text), limit, ""), "\n") {
+			out.Lines = append(out.Lines, plainMargin+l)
+		}
+		s.RenEnd = len(out.Lines)
+		out.spans[i] = s
+	}
+	out.Lines = append(out.Lines, "")
+	return out
+}
+
+// tabWidth is the tab stop of plain text.
+const tabWidth = 4
+
+// expandTabs replaces tabs with spaces to the next tab stop, since the
+// terminal's own tab stops ignore the margin and wrapping.
+func expandTabs(s string) string {
+	if !strings.Contains(s, "\t") {
+		return s
+	}
+	var sb strings.Builder
+	col := 0
+	for _, c := range s {
+		if c == '\t' {
+			n := tabWidth - col%tabWidth
+			sb.WriteString(strings.Repeat(" ", n))
+			col += n
+			continue
+		}
+		sb.WriteRune(c)
+		col += ansi.StringWidth(string(c))
+	}
+	return sb.String()
 }
 
 // renderAll renders texts into cache, in parallel for large documents.

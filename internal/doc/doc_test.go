@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -262,5 +263,46 @@ func TestSameContent(t *testing.T) {
 	var nilDoc *Doc
 	if a.SameContent(nilDoc) || nilDoc.SameContent(a) {
 		t.Error("a nil Doc should never match")
+	}
+}
+
+// A .txt file is shown as written: its line breaks, blank lines and markdown
+// characters survive, long lines wrap, and every line maps both ways.
+func TestPlainText(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "notes.TXT")
+	src := "# not a heading\r\nfirst line\nsecond *line*\n\n\n\tindented " + strings.Repeat("word ", 20) + "\n"
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(d.Headings) != 0 || d.Lines != 6 || len(d.Blocks) != 6 {
+		t.Fatalf("headings %v, lines %d, blocks %d", d.Headings, d.Lines, len(d.Blocks))
+	}
+	r, err := NewRenderer("notty").Render(d, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"", "  # not a heading", "  first line", "  second *line*", "  ", "  "}
+	if !slices.Equal(r.Lines[:len(want)], want) {
+		t.Fatalf("lines %q", r.Lines)
+	}
+	if !strings.HasPrefix(r.Lines[6], "      indented word") || len(r.Lines) < 10 {
+		t.Fatalf("tab and wrap: %q", r.Lines[6:])
+	}
+	for _, l := range r.Lines {
+		if w := len(l); w > 40 {
+			t.Fatalf("line %q is %d wide", l, w)
+		}
+	}
+	for src := range d.Lines {
+		if got := r.RenderedToSource(d, r.SourceToRendered(d, src)); got != src {
+			t.Fatalf("source %d round-trips to %d", src, got)
+		}
+	}
+	if r.SourceToRendered(d, 5) != 6 {
+		t.Fatalf("last line at %d", r.SourceToRendered(d, 5))
 	}
 }
