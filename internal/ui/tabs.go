@@ -27,6 +27,9 @@ const (
 func (a *App) activate(i int) {
 	if len(a.tabs) == 0 {
 		a.cur, a.pane, a.toc = 0, nil, nil
+		if a.focus == focusTOC {
+			a.focus = focusDoc
+		}
 		return
 	}
 	a.cur = max(0, min(i, len(a.tabs)-1))
@@ -120,20 +123,19 @@ func (a *App) splitPane(vert bool) {
 	a.focusLeaf(t.focus)
 }
 
-// closePane closes the focused pane, or its tab when it is the only one, and
-// reports whether anything is left open.
-func (a *App) closePane() bool {
+// closePane closes the focused pane, or its tab when it is the only one.
+func (a *App) closePane() {
 	t := a.tab()
 	if t == nil {
-		return false
+		return
 	}
 	if !t.multi() {
-		return a.closeTab()
+		a.closeTab()
+		return
 	}
 	a.pushClosed(closedPaneOf(t))
 	t.close()
 	a.focusLeaf(t.focus)
-	return true
 }
 
 // allPanes is every pane in every tab.
@@ -157,20 +159,15 @@ func (a *App) livePane(p *Pane) bool {
 	return false
 }
 
-// closeTab closes the current tab and reports whether any are left. Like
-// vim, the tab to the right takes its place.
-func (a *App) closeTab() bool {
+// closeTab closes the current tab. Like vim, the tab to the right takes its
+// place; closing the last one leaves the empty screen.
+func (a *App) closeTab() {
 	if len(a.tabs) == 0 {
-		return false
+		return
 	}
 	a.pushClosed(&closed{kind: closedTab, tab: a.tabs[a.cur], idx: a.cur})
 	a.tabs = slices.Delete(a.tabs, a.cur, a.cur+1)
-	if len(a.tabs) == 0 {
-		a.activate(0)
-		return false
-	}
 	a.activate(min(a.cur, len(a.tabs)-1))
-	return true
 }
 
 // gotoTab is {n}gt and alt+n: tab n, 1-based.

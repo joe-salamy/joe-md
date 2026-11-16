@@ -46,7 +46,7 @@ joe-md [flags] [FILE.md]... [DIR]
 
 Each file opens in its own tab. Given a directory (at most one), or nothing at
 all, joe-md starts with the file menu open there (the current directory by
-default).
+default); closing the menu with nothing open leaves the empty screen.
 
 | Flag         | Default | Meaning                                              |
 |--------------|---------|------------------------------------------------------|
@@ -158,7 +158,7 @@ keys; `enter` keeps the filter), `esc` clears the search, then closes; `q` close
 | `ctrl+g`                     | show the file's full path           |
 | `yn` `yp` `yf`               | copy the file's name / full path / contents to the clipboard |
 | `o`                          | open the file menu                  |
-| `q`                          | kill the search if there is one; else close the pane, else the tab; quits on the last one (`Q` and `ctrl+c` also quit) |
+| `q`                          | kill the search if there is one; else close the pane, else the tab; on the empty screen, quit (`Q` and `ctrl+c` always quit) |
 | `Q` `ctrl+c`                 | quit                                |
 
 ### Tabs
@@ -169,7 +169,7 @@ keys; `enter` keeps the filter), `esc` clears the search, then closes; `q` close
 | `{n}gt` `alt+1`…`alt+9`      | go to tab *n*                       |
 | `{n}gT`                      | *n* tabs back                       |
 | `<<` `>>`                     | move the tab left / right (`{n}>>` moves *n* places; stops at the ends) |
-| `x`                          | close the tab and all its panes (not the last tab) |
+| `x`                          | close the tab and all its panes     |
 | `X` `{n}X`                   | reopen the last closed tab or pane (or the last *n*) where it was |
 | `alt+t`                      | show / hide the tab bar             |
 
@@ -180,6 +180,9 @@ pane's file, plus `+n` for its other panes.
 Click a tab to switch to it, middle-click to close it, or scroll the wheel over
 the bar to step through them. With the bar hidden, the status line shows
 `[n/total]`.
+
+Closing the last tab leaves an empty screen listing the keys to open a file,
+reopen the tab, show the keys or quit; `q` there quits.
 
 `X` reopens closed tabs and panes newest first, each where it was: a tab at
 its old place in the bar, a pane back beside the pane that took its space, at

@@ -20,9 +20,7 @@ func TestSearchDoneWithNoPaneDoesNotPanic(t *testing.T) {
 	path := filepath.Join(dir, "a.md")
 	a := newTestApp(t, path)
 	p := a.pane
-	if a.closeTab() {
-		t.Fatal("closing the last tab should report nothing left")
-	}
+	a.closeTab()
 	if a.pane != nil {
 		t.Fatal("no pane should be left")
 	}
@@ -33,7 +31,7 @@ func TestSearchDoneWithNoPaneDoesNotPanic(t *testing.T) {
 }
 
 // An empty cross-file search leaves nothing to kill, so q still closes the
-// pane (and quits on the last one) in a single press.
+// pane in a single press.
 func TestEmptyCrossSearchIsNotActive(t *testing.T) {
 	dir := fixture(t)
 	a := newTestApp(t, filepath.Join(dir, "a.md"))
@@ -44,7 +42,7 @@ func TestEmptyCrossSearchIsNotActive(t *testing.T) {
 	if a.searchActive() {
 		t.Fatal("an empty search should not count as active")
 	}
-	if cmd := press(a, "q"); cmd == nil {
+	if press(a, "q"); len(a.tabs) != 0 {
 		t.Fatal("q should close the last pane")
 	}
 }

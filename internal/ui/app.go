@@ -607,9 +607,7 @@ func (a *App) click(m tea.Mouse) tea.Cmd {
 				a.activate(i)
 			case tea.MouseMiddle:
 				a.activate(i)
-				if !a.closeTab() {
-					return tea.Quit
-				}
+				a.closeTab()
 			}
 		}
 		return nil
@@ -674,6 +672,8 @@ func (a *App) View() tea.View {
 	body := make([]string, a.bodyHeight())
 	if a.pane != nil {
 		body = a.renderNode(a.tab(), a.tab().root)
+	} else if a.menu == nil {
+		a.emptyScreen(body)
 	}
 	if a.showTOC && a.pane != nil {
 		tw := a.tocWidth()
@@ -702,6 +702,49 @@ func (a *App) View() tea.View {
 	}
 	v.SetContent(strings.Join(screen, "\n"))
 	return v
+}
+
+// emptyScreen fills body, the screen with no file open, with a title and the
+// keys that get somewhere, centred.
+func (a *App) emptyScreen(body []string) {
+	type row struct{ key, what string }
+	var rows []row
+	keyW, w := 0, 0
+	add := func(name, what string) {
+		if k := a.hint(ctxNormal, name); k != unbound {
+			rows = append(rows, row{k, what})
+			keyW = max(keyW, ansi.StringWidth(k))
+		}
+	}
+	add("open_menu", "open a file")
+	if len(a.closed) > 0 {
+		add("reopen", "reopen the last closed tab")
+	}
+	add("help", "show the keys")
+	add("quit", "quit")
+	for _, r := range rows {
+		w = max(w, keyW+2+ansi.StringWidth(r.what))
+	}
+	const title = "no file open"
+	lines := []string{a.theme.tocLevel(0).Render(title), ""}
+	for _, r := range rows {
+		pad := strings.Repeat(" ", keyW-ansi.StringWidth(r.key)+2)
+		lines = append(lines, a.theme.tocCurrent.Render(r.key)+pad+a.theme.dim.Render(r.what))
+	}
+	top := max((len(body)-len(lines))/2, 0)
+	left := strings.Repeat(" ", max((a.width-w)/2, 0))
+	titleLeft := strings.Repeat(" ", max((a.width-len(title))/2, 0))
+	for i, l := range lines {
+		if top+i >= len(body) {
+			break
+		}
+		if i == 0 {
+			l = titleLeft + l
+		} else if l != "" {
+			l = left + l
+		}
+		body[top+i] = fit(l, a.width)
+	}
 }
 
 func (a *App) statusLine() string {

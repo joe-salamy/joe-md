@@ -296,14 +296,8 @@ func init() {
 			run: do(func(a *App, c call) { a.moveTab(-c.n) })},
 		&action{name: "move_tab_right", desc: "move the tab n places right", row: "move the tab n places left / right", keys: keys("> >"),
 			run: do(func(a *App, c call) { a.moveTab(c.n) })},
-		&action{name: "close_tab", desc: "close the tab (not the last one)", keys: keys("x"),
-			run: do(func(a *App, c call) {
-				if len(a.tabs) == 1 {
-					a.msg = "last tab (q quits)"
-				} else {
-					a.closeTab()
-				}
-			})},
+		&action{name: "close_tab", desc: "close the tab", keys: keys("x"),
+			run: do(func(a *App, c call) { a.closeTab() })},
 		&action{name: "reopen", desc: "reopen the last closed tab or pane where it was, or the last n", keys: keys("X"),
 			run: func(a *App, c call) tea.Cmd { return a.reopen(c.n) }},
 		&action{name: "toggle_tab_bar", desc: "show / hide the tab bar", keys: keys("alt+t"),
@@ -417,13 +411,14 @@ func init() {
 	)
 
 	add(ctxNormal, "Quitting",
-		&action{name: "quit", desc: "kill the search if there is one, else close the pane, then the tab, then quit", keys: keys("q"),
+		&action{name: "quit", desc: "kill the search if there is one, else close the pane, then the tab, else quit", keys: keys("q"),
 			run: func(a *App, c call) tea.Cmd {
-				if a.searchActive() {
+				switch {
+				case a.searchActive():
 					a.killSearch()
-					return nil
-				}
-				if !a.closePane() {
+				case len(a.tabs) > 0:
+					a.closePane()
+				default:
 					return tea.Quit
 				}
 				return nil
@@ -530,7 +525,8 @@ func init() {
 					a.menu.anchor = a.menu.cursor
 					return nil
 				}
-				return a.closeMenu()
+				a.menu = nil
+				return nil
 			}},
 		&action{name: "quit", desc: "quit", keys: keys("Q"),
 			run: func(a *App, c call) tea.Cmd { return tea.Quit }},

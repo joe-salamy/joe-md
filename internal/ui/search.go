@@ -63,8 +63,13 @@ func (a *App) setPlaceholder() {
 		h("toggle_literal") + ": regex/literal · " + h("submit") + ": search"
 }
 
-// startSearch opens the search bar for typing, starting in scope s.
+// startSearch opens the search bar for typing, starting in scope s. Every
+// scope starts from the focused file, so with none open there is no search.
 func (a *App) startSearch(s search.Scope) tea.Cmd {
+	if a.pane == nil {
+		a.msg = "no file open"
+		return nil
+	}
 	a.scope = s
 	a.typing = true
 	a.histIdx = len(a.history)
@@ -492,8 +497,10 @@ func (a *App) closeResults() {
 	a.layout()
 }
 
+// barHeight is the search bar's: shown while typing or when kept visible,
+// but not on the empty screen, where nothing can be searched.
 func (a *App) barHeight() int {
-	if a.showBar || a.typing {
+	if a.typing || a.showBar && a.pane != nil {
 		return 1
 	}
 	return 0

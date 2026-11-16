@@ -93,16 +93,6 @@ func (a *App) menuHere() tea.Cmd {
 	return a.openMenu(dir, "")
 }
 
-// closeMenu hides the menu. With no tabs open there is nothing to go back to,
-// so it quits instead.
-func (a *App) closeMenu() tea.Cmd {
-	a.menu = nil
-	if len(a.tabs) == 0 {
-		return tea.Quit
-	}
-	return nil
-}
-
 // menuLoad lists dir, putting the cursor on sel. On error the menu stays
 // where it was and shows the error.
 func (a *App) menuLoad(dir, sel string) bool {
@@ -706,7 +696,8 @@ func (a *App) menuMouse(msg tea.MouseMsg) tea.Cmd {
 	step, outside := popupMouse(msg, x, y, w, h)
 	a.menu.scroll(step, a.menuRows())
 	if outside {
-		return a.closeMenu()
+		a.menu = nil
+		return nil
 	}
 	m := msg.Mouse()
 	if _, click := msg.(tea.MouseClickMsg); !click || m.Button != tea.MouseLeft {

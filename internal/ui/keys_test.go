@@ -413,8 +413,8 @@ func TestQKillsSearchFirst(t *testing.T) {
 	if a.pane.match != nil || a.results != nil {
 		t.Fatal("q should kill the search")
 	}
-	if cmd := press(a, "q"); cmd == nil {
-		t.Fatal("q without a search should quit on the last pane")
+	if press(a, "q"); len(a.tabs) != 0 {
+		t.Fatal("q without a search should close the last pane")
 	}
 }
 

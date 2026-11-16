@@ -9,6 +9,7 @@ import (
 	"github.com/joe-salamy/joe-md/internal/doc"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // fixture makes a small tree:
@@ -142,7 +143,8 @@ func TestTabsOpenDedupeClose(t *testing.T) {
 		t.Fatalf("<< at the start: tabs %q cur %d", got, a.cur)
 	}
 
-	// x closes, q closes, and q on the last tab quits.
+	// x closes, q closes, and closing the last tab leaves the empty screen,
+	// where q quits.
 	press(a, "x")
 	if got := tabNames(a); got != "c.md d.md" || a.pane.doc.Name != "c.md" {
 		t.Fatalf("x: tabs %q, showing %s", got, a.pane.doc.Name)
@@ -150,12 +152,27 @@ func TestTabsOpenDedupeClose(t *testing.T) {
 	if cmd := press(a, "q"); cmd != nil || tabNames(a) != "d.md" {
 		t.Fatalf("q: tabs %q", tabNames(a))
 	}
-	press(a, "x")
-	if len(a.tabs) != 1 {
-		t.Fatal("x must not close the last tab")
+	if cmd := press(a, "x"); cmd != nil || len(a.tabs) != 0 || a.pane != nil {
+		t.Fatalf("x on the last tab: tabs %q", tabNames(a))
+	}
+	if s := ansi.Strip(a.View().Content); !strings.Contains(s, "no file open") || !strings.Contains(s, "X   reopen the last closed tab") ||
+		strings.Contains(s, "search file") {
+		t.Fatalf("empty screen:\n%s", s)
+	}
+	// Keys that need a file do nothing without one.
+	press(a, "j", "/", "n", "g", "c", "G")
+	if a.typing || a.pane != nil {
+		t.Fatal("document keys should do nothing on the empty screen")
+	}
+	press(a, "X")
+	if tabNames(a) != "d.md" || a.pane == nil {
+		t.Fatalf("X from the empty screen: tabs %q", tabNames(a))
+	}
+	if cmd := press(a, "q"); cmd != nil || len(a.tabs) != 0 {
+		t.Fatal("q on the last tab should close it")
 	}
 	if cmd := press(a, "q"); cmd == nil {
-		t.Fatal("q on the last tab should quit")
+		t.Fatal("q on the empty screen should quit")
 	}
 }
 
@@ -239,8 +256,11 @@ func TestStartupMenu(t *testing.T) {
 	}
 
 	b := New(nil, Options{Style: "notty", MaxWrap: 80, MenuDir: dir})
-	if cmd := press(b, "esc"); cmd == nil {
-		t.Fatal("closing the start-up menu with no tabs should quit")
+	if cmd := press(b, "esc"); cmd != nil || b.menu != nil {
+		t.Fatal("closing the start-up menu with no tabs should leave the empty screen")
+	}
+	if cmd := press(b, "q"); cmd == nil {
+		t.Fatal("q on the empty screen should quit")
 	}
 }
 
