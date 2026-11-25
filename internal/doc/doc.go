@@ -75,6 +75,9 @@ func (d *Doc) SameContent(o *Doc) bool {
 // ErrBinary is Load's error for a file that isn't text.
 var ErrBinary = errors.New("not a text file")
 
+// ErrNotFile is Load's error for a path that isn't a regular file.
+var ErrNotFile = errors.New("not a regular file")
+
 // IsPlainText reports whether the file name is a plain-text file, which is
 // shown as written rather than rendered as markdown: its line breaks, and
 // characters like * and #, mean nothing to markdown.
@@ -84,6 +87,15 @@ func IsPlainText(name string) bool { return strings.EqualFold(filepath.Ext(name)
 // file, as plain text. The doc's path is absolute, so file identity, display
 // and editing never depend on how the file was named on its way in.
 func Load(path string) (*Doc, error) {
+	// Only regular files are read: opening a FIFO waits for a writer that may
+	// never come, and a device or socket has no end.
+	fi, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is %w", filepath.Base(path), ErrNotFile)
+	}
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err

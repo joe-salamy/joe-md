@@ -132,6 +132,12 @@ func TestLerpInverse(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsNonFiles(t *testing.T) {
+	if _, err := Load(t.TempDir()); !errors.Is(err, ErrNotFile) {
+		t.Errorf("directory: err = %v, want ErrNotFile", err)
+	}
+}
+
 func TestLoadRejectsBinary(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "x.md")
 	if err := os.WriteFile(p, []byte("# hi\x00there"), 0o644); err != nil {
