@@ -187,3 +187,33 @@ func TestReopenSkipsDeletedTab(t *testing.T) {
 		t.Fatalf("msg = %q", a.msg)
 	}
 }
+
+// The closed stack keeps the panes' places and scroll positions, not their
+// rendered text: twenty closed tabs must not keep twenty documents' lines in
+// memory.
+func TestClosedStackDropsRenderedLines(t *testing.T) {
+	dir := t.TempDir()
+	body := "# t\n\n" + strings.Repeat("text\n\n", 200)
+	var paths []string
+	for i := range closedMax + 5 {
+		p := filepath.Join(dir, fmt.Sprintf("t%02d.md", i))
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		paths = append(paths, p)
+	}
+	a := newTestApp(t, paths...)
+	for len(a.tabs) > 1 {
+		press(a, "x")
+	}
+	if len(a.closed) != closedMax {
+		t.Fatalf("closed stack holds %d, want %d", len(a.closed), closedMax)
+	}
+	for _, e := range a.closed {
+		for _, l := range e.tab.leaves() {
+			if l.pane.view != nil || len(l.pane.doc.Source) != 0 || !l.pane.reopenAnchorOK {
+				t.Fatalf("%s: closed pane kept its rendered lines", l.pane.doc.Name)
+			}
+		}
+	}
+}
