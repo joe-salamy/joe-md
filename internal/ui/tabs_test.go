@@ -291,3 +291,39 @@ func TestReloadUnshownPane(t *testing.T) {
 		t.Errorf("after showing: wrap %d", p.wrap)
 	}
 }
+
+// When the tabs do not all fit, the bar slides to keep the current one in
+// view, stays exactly as wide as the screen, and every cell of a visible tab
+// still opens that tab.
+func TestTabBarSlidesAndStillHits(t *testing.T) {
+	dir := fixture(t)
+	a := newTestApp(t, filepath.Join(dir, "a.md"), filepath.Join(dir, "b.md"),
+		filepath.Join(dir, "data.json"), filepath.Join(dir, "docs/c.md"),
+		filepath.Join(dir, "docs/sub/d.md"))
+	for _, w := range []int{20, 24, 30, 40} {
+		a.Update(tea.WindowSizeMsg{Width: w, Height: 20})
+		for cur := range a.tabs {
+			a.cur = cur
+			if got := ansi.StringWidth(a.tabBar()); got != w {
+				t.Fatalf("width %d, tab %d: the bar is %d cells", w, cur, got)
+			}
+			labels, first, last, xs := a.tabSpans(w)
+			if cur < first || cur > last {
+				t.Fatalf("width %d: tab %d is hidden in [%d,%d]", w, cur, first, last)
+			}
+			for j, start := range xs {
+				i := first + j
+				if start >= w {
+					continue
+				}
+				end := min(start+ansi.StringWidth(labels[i]), w) - 1
+				if got := a.tabAt(start); got != i {
+					t.Fatalf("width %d: cell %d of tab %d opens tab %d", w, start, i, got)
+				}
+				if got := a.tabAt(end); got != i {
+					t.Fatalf("width %d: cell %d of tab %d opens tab %d", w, end, i, got)
+				}
+			}
+		}
+	}
+}
