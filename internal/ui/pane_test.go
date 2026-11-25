@@ -59,3 +59,12 @@ func TestHeadingJumpStopsAtEnd(t *testing.T) {
 		t.Fatalf("after scrolling: current %d", p.CurrentHeading())
 	}
 }
+
+// A pane whose render failed has no lines to count, so the position must not
+// divide by zero; scrolling can leave an offset behind with no view.
+func TestPanePercentWithoutView(t *testing.T) {
+	p := &Pane{offset: 5}
+	if got := p.Percent(); got != "All" {
+		t.Fatalf("Percent without a view = %q, want All", got)
+	}
+}

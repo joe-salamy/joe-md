@@ -241,6 +241,9 @@ func (p *Pane) NextHeading(n int) int {
 // After a jump past the end (to a source line) it is the share of the
 // document above the top line.
 func (p *Pane) Percent() string {
+	if p.view == nil {
+		return "All" // nothing rendered: a failed render leaves no lines to count
+	}
 	switch m := p.maxOffset(); {
 	case p.offset > m:
 		return strconv.Itoa(p.offset*100/len(p.view.Lines)) + "%"
