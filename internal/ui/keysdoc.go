@@ -30,7 +30,10 @@ func (km *Keymap) display(x *action) []string {
 // counting up by one, three or more long: alt+1 … alt+9 become "alt+1…9".
 func collapseDigits(ks []string) []string {
 	digit := func(k string) (string, byte, bool) {
-		if d := k[len(k)-1]; len(k) > 1 && d >= '0' && d <= '9' {
+		if len(k) < 2 {
+			return "", 0, false
+		}
+		if d := k[len(k)-1]; d >= '0' && d <= '9' {
 			return k[:len(k)-1], d, true
 		}
 		return "", 0, false

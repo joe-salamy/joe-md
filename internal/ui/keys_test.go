@@ -668,3 +668,25 @@ func TestStatusKeepsPositionWithLongName(t *testing.T) {
 		t.Errorf("status should keep the position and elide the name: %q", s)
 	}
 }
+
+// A run of keys that differ only in a last digit collapses; anything else,
+// an empty key included, comes back as it went in.
+func TestCollapseDigits(t *testing.T) {
+	run := []string{"alt+1", "alt+2", "alt+3", "alt+4"}
+	if got := collapseDigits(run); !slices.Equal(got, []string{"alt+1…4"}) {
+		t.Errorf("alt+1..4 collapsed to %q", got)
+	}
+	pair := []string{"alt+1", "alt+2"}
+	if got := collapseDigits(pair); !slices.Equal(got, pair) {
+		t.Errorf("a pair should stay apart: %q", got)
+	}
+	gap := []string{"alt+1", "alt+3"}
+	if got := collapseDigits(gap); !slices.Equal(got, gap) {
+		t.Errorf("a gap should stay apart: %q", got)
+	}
+	for _, k := range [][]string{{""}, {"j"}, {"", "alt+1"}} {
+		if got := collapseDigits(k); !slices.Equal(got, k) {
+			t.Errorf("collapseDigits(%q) = %q", k, got)
+		}
+	}
+}
