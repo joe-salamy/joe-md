@@ -318,9 +318,10 @@ next frame).
 Scopes: **file** is the open file; **open** is every open file, in tab order
 (`g b` starts one directly); **dir** is its directory, recursively;
 **repo** is the enclosing git repository (the nearest `.git`), or the directory
-outside one. Directory scopes search markdown and `.txt` files only, including files
-ignored by git; `search.exclude` in the settings file skips paths (gitignore
-globs, e.g. `node_modules`) in dir/repo/open searches. Hidden files stay
+outside one. Directory scopes search markdown and `.txt` files only (extensions
+in any case, e.g. `README.MD`), including files ignored by git; `search.exclude`
+in the settings file skips paths (gitignore globs matched without regard to
+case, e.g. `node_modules`) in dir/repo/open searches. Hidden files stay
 skipped.
 
 A **file** search works like vim's `/`: it jumps to the first match below the
