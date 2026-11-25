@@ -18,16 +18,30 @@ import (
 type Renderer struct {
 	style  string
 	mu     sync.Mutex
-	cache  map[int]map[string][]string // width -> block text -> lines
-	widths []int                       // the cached widths, least recently used first
+	cache  map[int]map[string][]string     // width -> block text -> lines
+	terms  map[int][]*glamour.TermRenderer // width -> idle renderers, as many as maxIdleTerms
+	widths []int                           // the cached widths, least recently used first
 }
 
 // maxWidths is how many widths the cache holds: enough for a few panes side
 // by side and a resize.
 const maxWidths = 4
 
+// maxIdleTerms is how many idle glamour renderers a width keeps. Building one
+// parses the style, so a resize should not rebuild them; keeping one per core
+// for every width would cost more memory than it saves.
+const maxIdleTerms = 2
+
+// seqBlocks is the largest batch of blocks rendered without worker
+// goroutines, which cost more than they save for a handful of blocks.
+const seqBlocks = 16
+
 func NewRenderer(style string) *Renderer {
-	return &Renderer{style: style, cache: map[int]map[string][]string{}}
+	return &Renderer{
+		style: style,
+		cache: map[int]map[string][]string{},
+		terms: map[int][]*glamour.TermRenderer{},
+	}
 }
 
 // widthCache returns the cache of blocks rendered at width, making it the
@@ -40,6 +54,7 @@ func (r *Renderer) widthCache(width int) map[string][]string {
 	}
 	if len(r.widths) == maxWidths {
 		delete(r.cache, r.widths[0])
+		delete(r.terms, r.widths[0])
 		r.widths = r.widths[1:]
 	}
 	c := map[string][]string{}
@@ -54,6 +69,41 @@ func (r *Renderer) newTerm(width int) (*glamour.TermRenderer, error) {
 		glamour.WithWordWrap(width),
 		glamour.WithEmoji(),
 	)
+}
+
+// getTerms borrows n renderers for width, reusing idle ones before building
+// the rest. They go back with putTerms.
+func (r *Renderer) getTerms(width, n int) ([]*glamour.TermRenderer, error) {
+	r.mu.Lock()
+	pool := r.terms[width]
+	var terms []*glamour.TermRenderer
+	if k := min(n, len(pool)); k > 0 {
+		terms = append(terms, pool[len(pool)-k:]...)
+		r.terms[width] = pool[:len(pool)-k]
+	}
+	r.mu.Unlock()
+	for len(terms) < n {
+		tr, err := r.newTerm(width)
+		if err != nil {
+			r.putTerms(width, terms)
+			return nil, err
+		}
+		terms = append(terms, tr)
+	}
+	return terms, nil
+}
+
+// putTerms gives renderers back to their width's pool, unless the width was
+// evicted while they were in use.
+func (r *Renderer) putTerms(width int, terms []*glamour.TermRenderer) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.cache[width]; !ok {
+		return
+	}
+	if n := maxIdleTerms - len(r.terms[width]); n > 0 {
+		r.terms[width] = append(r.terms[width], terms[:min(n, len(terms))]...)
+	}
 }
 
 // Rendered is a document rendered at a fixed width.
@@ -158,50 +208,55 @@ func expandTabs(s string) string {
 	return sb.String()
 }
 
-// renderAll renders texts into cache, in parallel for large documents.
-// Each worker owns its own TermRenderer since they are not goroutine-safe.
+// renderAll renders texts into cache, in parallel for large documents. Each
+// worker owns its own TermRenderer since they are not goroutine-safe.
 func (r *Renderer) renderAll(cache map[string][]string, texts []string, width int) error {
 	if len(texts) == 0 {
 		return nil
 	}
-	workers := min(runtime.NumCPU(), len(texts)/16+1)
+	workers := min(runtime.NumCPU(), len(texts)/seqBlocks+1)
+	terms, err := r.getTerms(width, workers)
+	if err != nil {
+		return err
+	}
+	defer r.putTerms(width, terms)
+
+	if len(terms) == 1 {
+		for _, t := range texts {
+			r.renderBlock(cache, terms[0], t)
+		}
+		return nil
+	}
 	jobs := make(chan string)
-	errs := make(chan error, workers)
 	var wg sync.WaitGroup
-	for range workers {
+	for _, tr := range terms {
 		wg.Add(1)
-		go func() {
+		go func(tr *glamour.TermRenderer) {
 			defer wg.Done()
-			tr, err := r.newTerm(width)
-			if err != nil {
-				errs <- err
-				for range jobs {
-				}
-				return
-			}
 			for t := range jobs {
-				s, err := tr.Render(t)
-				if err != nil {
-					s = t // fall back to raw source rather than failing the whole doc
-				}
-				lines := trimBlank(strings.Split(s, "\n"))
-				r.mu.Lock()
-				cache[t] = lines
-				r.mu.Unlock()
+				r.renderBlock(cache, tr, t)
 			}
-		}()
+		}(tr)
 	}
 	for _, t := range texts {
 		jobs <- t
 	}
 	close(jobs)
 	wg.Wait()
-	select {
-	case err := <-errs:
-		return err
-	default:
-		return nil
+	return nil
+}
+
+// renderBlock renders one block into cache. A block that fails to render is
+// shown as its source rather than failing the whole document.
+func (r *Renderer) renderBlock(cache map[string][]string, tr *glamour.TermRenderer, text string) {
+	s, err := tr.Render(text)
+	if err != nil {
+		s = text
 	}
+	lines := trimBlank(strings.Split(s, "\n"))
+	r.mu.Lock()
+	cache[text] = lines
+	r.mu.Unlock()
 }
 
 func isBlank(l string) bool { return strings.TrimSpace(ansi.Strip(l)) == "" }

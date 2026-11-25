@@ -258,6 +258,32 @@ func TestRendererKeepsSeveralWidths(t *testing.T) {
 	}
 }
 
+// A renderer is kept for reuse: glamour parses the style when building one,
+// so an edit or reload should not rebuild it (and re-read a style file) for
+// every block that changed.
+func TestRendererReusesTermRenderers(t *testing.T) {
+	r := NewRenderer("notty")
+	d := Parse([]byte(sample))
+	if _, err := r.Render(d, 40); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.terms[40]) == 0 {
+		t.Fatal("no renderer kept for the width")
+	}
+	d.renders[0] = "## Changed\n" // one block is new, the pooled renderer renders it
+	got, err := r.Render(d, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := NewRenderer("notty").Render(d, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got.Lines, want.Lines) {
+		t.Errorf("a reused renderer rendered differently:\n%q\n%q", got.Lines, want.Lines)
+	}
+}
+
 // Control sequences in a document are neutralised before rendering, while
 // Source keeps the original for copy-contents.
 func TestControlSequencesAreNeutralised(t *testing.T) {
