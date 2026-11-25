@@ -251,22 +251,18 @@ func (m *Menu) refilter(showAll, hideIgnored bool, rows int) {
 			m.shown = append(m.shown, i)
 		}
 	}
-	keep := map[int]bool{}
-	if m.sel != nil {
-		visible := map[int]bool{}
-		for _, j := range m.shown {
-			visible[j] = true
-		}
-		for j := range m.sel {
-			if visible[j] {
-				keep[j] = true
-			}
+	// shown is in entries order, so a binary search per mark finds the ones
+	// that fell out without building a set of every shown index: refilter
+	// runs on each keystroke of the filter, over a listing that can be large.
+	for j := range m.sel {
+		if _, ok := slices.BinarySearch(m.shown, j); !ok {
+			delete(m.sel, j)
 		}
 	}
-	if len(keep) == 0 {
-		keep = nil
+	if len(m.sel) == 0 {
+		m.sel = nil
 	}
-	m.sel, m.ext = keep, nil
+	m.ext = nil
 	m.cursor, m.offset = 0, 0
 	m.selectName(sel, rows)
 	m.anchor = m.cursor
