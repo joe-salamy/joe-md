@@ -42,3 +42,23 @@ func TestPathCompare(t *testing.T) {
 		t.Errorf("got %q, want %q", paths, want)
 	}
 }
+
+// Both comparisons run inside sort comparators, which call them thousands of
+// times for a large directory or result list, so neither may allocate: a copy
+// of each name per comparison is a copy per comparison of the sort.
+func TestCompareDoesNotAllocate(t *testing.T) {
+	for _, tc := range []struct{ a, b string }{
+		{"file9", "file10"},
+		{"2. Two", "10. Ten"},
+		{"École", "école"},
+		{"/r/b/10/x.md", "/r/b/2/x.md"},
+		{"/notes/file9.md", "/notes/file10.md"},
+	} {
+		if n := testing.AllocsPerRun(100, func() { Compare(tc.a, tc.b) }); n != 0 {
+			t.Errorf("Compare(%q, %q) allocates %v times", tc.a, tc.b, n)
+		}
+		if n := testing.AllocsPerRun(100, func() { PathCompare(tc.a, tc.b) }); n != 0 {
+			t.Errorf("PathCompare(%q, %q) allocates %v times", tc.a, tc.b, n)
+		}
+	}
+}
