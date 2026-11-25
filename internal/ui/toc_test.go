@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/joe-salamy/joe-md/internal/doc"
+
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -168,4 +170,25 @@ func TestTOCFilterStopsWhenFocusLeaves(t *testing.T) {
 		t.Fatal("a click on the document should stop the filter")
 	}
 	_ = a.View()
+}
+
+// The filter follows a document that changed under it: the headings it shows
+// are matched against the document on screen, not the one from before.
+func TestTOCFilterFollowsTheDocument(t *testing.T) {
+	a := tocFixture(t)
+	press(a, "g", "c")
+	typeText(a, "usage")
+	if !slices.Equal(a.tocFilter.shown, []int{2, 3}) {
+		t.Fatalf("usage should show 2 and 3: %v", a.tocFilter.shown)
+	}
+	a.pane.doc = doc.Parse([]byte("# Intro\n\n## Usage\n"))
+	a.pane.view = nil
+	a.Update(tea.WindowSizeMsg{Width: a.width, Height: a.height})
+	if !slices.Equal(a.tocFilter.shown, []int{1}) {
+		t.Fatalf("the filter should match the new headings: %v", a.tocFilter.shown)
+	}
+	a.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	if a.toc.cursor != 1 || a.pane.CurrentHeading() != 1 {
+		t.Fatalf("stepping should reach Usage: cursor %d", a.toc.cursor)
+	}
 }

@@ -116,11 +116,19 @@ func (t *TOC) Render(d *doc.Doc, f *tocFilter, current int, focused bool, width,
 // tocFilter is the sidebar filter's state.
 type tocFilter struct {
 	input textinput.Model
-	on    bool  // filtering: the input has the keyboard
-	toc   *TOC  // the sidebar being filtered
-	hide  bool  // search_toc showed the hidden sidebar: accept hides it again
-	shown []int // the matching headings, in order
-	view  list  // scroll over shown; view.cursor is the cursor's position in it
+	on    bool     // filtering: the input has the keyboard
+	toc   *TOC     // the sidebar being filtered
+	hide  bool     // search_toc showed the hidden sidebar: accept hides it again
+	shown []int    // the matching headings, in order
+	view  list     // scroll over shown; view.cursor is the cursor's position in it
+	of    *doc.Doc // the document shown was matched against
+	query string   // and the query it was matched with
+}
+
+// rematch fills in the headings of d that match, noting what they were
+// matched against.
+func (f *tocFilter) rematch(d *doc.Doc) {
+	f.shown, f.of, f.query = tocMatches(d, f.input.Value(), f.shown[:0]), d, f.input.Value()
 }
 
 // tocMatches appends to into the headings of d whose text contains every
@@ -204,7 +212,7 @@ func (a *App) setTOCFilter(s string) {
 // the document goes along; with nothing shown, both stay put.
 func (a *App) tocRefilter(follow bool) {
 	f := &a.tocFilter
-	f.shown = tocMatches(a.pane.doc, f.input.Value(), f.shown[:0])
+	f.rematch(a.pane.doc)
 	f.view = list{}
 	if len(f.shown) == 0 {
 		return
@@ -256,7 +264,9 @@ func (a *App) tocFilterKey(msg tea.KeyPressMsg) tea.Cmd {
 
 // keepTOCFilter ends the filter once the sidebar has lost the keyboard (a
 // click on a pane or the search bar, another tab) and otherwise matches
-// again, so the shown headings always index the document on screen.
+// again, so the shown headings always index the document on screen. A
+// message that changed neither the document nor the query (a mouse move, a
+// reload elsewhere) keeps the headings it has.
 func (a *App) keepTOCFilter() {
 	f := &a.tocFilter
 	if !f.on {
@@ -266,6 +276,8 @@ func (a *App) keepTOCFilter() {
 		a.stopTOCFilter()
 		return
 	}
-	f.shown = tocMatches(a.pane.doc, f.input.Value(), f.shown[:0])
+	if f.of != a.pane.doc || f.query != f.input.Value() {
+		f.rematch(a.pane.doc)
+	}
 	f.view.scroll(0, len(f.shown), a.tocRows())
 }
