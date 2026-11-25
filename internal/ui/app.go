@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joe-salamy/joe-md/internal/config"
 	"github.com/joe-salamy/joe-md/internal/doc"
@@ -45,6 +46,12 @@ const (
 )
 
 const wheelStep = 3
+
+// resizeSettle is how long a resize or a border drag may keep changing the
+// screen before the panes are rendered again: a window drag sends a size or a
+// motion message many times a second, and rendering a large document at each
+// intermediate size costs more than the drag can show.
+const resizeSettle = 60 * time.Millisecond
 
 type App struct {
 	opts      Options
@@ -85,6 +92,8 @@ type App struct {
 
 	helpCache    []string // the help's text, laid out for helpCacheKey
 	helpCacheKey helpCacheKey
+
+	layoutGen int // id of the latest deferred layout; older timers do nothing
 
 	// Search bar and results; see search.go.
 	input       textinput.Model
@@ -232,22 +241,61 @@ func (a *App) bodyX() int {
 // layout sizes and re-renders the current tab's panes after a resize, a
 // split or a sidebar toggle.
 func (a *App) layout() {
+	if !a.place() {
+		return
+	}
+	for _, l := range a.tab().leaves() {
+		if err := l.pane.Layout(a.renderer, l.pane.width, l.pane.height, a.opts.MaxWrap); err != nil {
+			a.msg = "render error: " + err.Error()
+		}
+	}
+}
+
+// place gives the current tab's panes their boxes on screen without rendering
+// their documents: a resize or a border drag moves them on every event, and
+// rendering at each intermediate size would cost far more than it shows (see
+// deferLayout). Sizing the panes here keeps their last rendering filling
+// exactly the cells View stitches together.
+func (a *App) place() bool {
 	a.tocWOK = false
 	if a.pane == nil || a.width == 0 {
-		return
+		return false
 	}
 	t := a.tab()
 	x := a.bodyX()
 	t.root.place(x, 0, max(a.width-x, 1), a.bodyHeight())
 	status := 0
 	if t.multi() {
-		status = 1
+		status = 1 // each pane's own status row
 	}
 	for _, l := range t.leaves() {
-		if err := l.pane.Layout(a.renderer, l.w, max(l.h-status, 1), a.opts.MaxWrap); err != nil {
-			a.msg = "render error: " + err.Error()
-		}
+		l.pane.width, l.pane.height = l.w, max(l.h-status, 1)
 	}
+	return true
+}
+
+// endDrag ends a border drag, rendering the panes at the width it ended on:
+// while it runs, place moves them but does not re-render.
+func (a *App) endDrag() {
+	if a.drag == nil {
+		return
+	}
+	a.drag = nil
+	a.layoutGen++ // the drag's timer has nothing left to do
+	a.layout()
+}
+
+// relayoutMsg asks for a layout once the resizes or the drag that deferred it
+// have settled. gen drops the timers that a later event superseded.
+type relayoutMsg struct{ gen int }
+
+// deferLayout schedules a layout once the events that need one stop coming,
+// and returns at once: the panes keep their last rendering in the meantime,
+// fitted into their new boxes by place.
+func (a *App) deferLayout() tea.Cmd {
+	a.layoutGen++
+	gen := a.layoutGen
+	return tea.Tick(resizeSettle, func(time.Time) tea.Msg { return relayoutMsg{gen} })
 }
 
 // syncTOC points the sidebar cursor at the section being read, unless the
@@ -294,16 +342,35 @@ func (a *App) fitInputs() {
 	}
 }
 
+// resized records a new screen size. The panes move at once but are rendered
+// only once the size settles: a window drag would otherwise re-render the
+// whole document at every intermediate width.
+func (a *App) resized(width, height int) tea.Cmd {
+	// With nothing rendered yet — start-up, or a pane whose document was just
+	// replaced — moving the boxes would show an empty frame: render at once.
+	empty := a.width == 0 || a.pane == nil || a.pane.view == nil
+	a.width, a.height = width, height
+	a.place()
+	if a.menu != nil {
+		a.menu.offset = 0 // re-scroll the cursor into the new size
+		a.menu.selectIdx(a.menu.cursor, a.menuRows())
+	}
+	if empty {
+		a.layout()
+		return nil
+	}
+	return a.deferLayout()
+}
+
 func (a *App) update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.BackgroundColorMsg:
 		a.setBackground(msg.IsDark())
 	case tea.WindowSizeMsg:
-		a.width, a.height = msg.Width, msg.Height
-		a.layout()
-		if a.menu != nil {
-			a.menu.offset = 0 // re-scroll the cursor into the new size
-			a.menu.selectIdx(a.menu.cursor, a.menuRows())
+		return a.resized(msg.Width, msg.Height)
+	case relayoutMsg:
+		if msg.gen == a.layoutGen {
+			a.layout()
 		}
 	case tea.KeyPressMsg:
 		if a.menu != nil {
@@ -323,6 +390,7 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 		}
 	case tea.MouseClickMsg:
 		a.msg = ""
+		a.endDrag() // in case the release was lost
 		switch {
 		case a.menu != nil:
 			return a.menuMouse(msg)
@@ -335,10 +403,11 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 		if a.drag != nil {
 			m := msg.Mouse()
 			a.drag.drag(m.X, m.Y-a.tabBarHeight())
-			a.layout()
+			a.place()
+			return a.deferLayout() // endDrag renders at the width it ends on
 		}
 	case tea.MouseReleaseMsg:
-		a.drag = nil
+		a.endDrag()
 	case editDoneMsg:
 		return a.editDone(msg)
 	case searchDoneMsg:

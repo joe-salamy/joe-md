@@ -108,3 +108,71 @@ func TestTOCClampAfterReload(t *testing.T) {
 		t.Fatalf("cursor %d after j", a.toc.cursor)
 	}
 }
+
+// Dragging a pane border moves the panes on every motion, but re-renders the
+// document only once, when the drag ends: a render per mouse motion would
+// redo the whole document at each intermediate width.
+func TestDragRendersOnceAtTheEnd(t *testing.T) {
+	a := newTestApp(t, filepath.Join(fixture(t), "a.md"), filepath.Join(fixture(t), "b.md"))
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	press(a, "ctrl+w", "v") // split, two panes on a.md and b.md
+	if !a.tab().multi() {
+		t.Fatal("expected a split")
+	}
+	border := -1
+	for x := a.bodyX(); x < a.width && border < 0; x++ {
+		if a.tab().root.borderAt(x, 2) != nil {
+			border = x
+		}
+	}
+	if border < 0 {
+		t.Fatal("no border to drag")
+	}
+	y := 1 + 2 // the tab bar is above the body
+	a.Update(tea.MouseClickMsg(tea.Mouse{X: border, Y: y, Button: tea.MouseLeft}))
+	if a.drag == nil {
+		t.Fatal("a click on the border should start a drag")
+	}
+	view, wrap := a.pane.view, a.pane.wrap
+	a.Update(tea.MouseMotionMsg(tea.Mouse{X: border + 6, Y: y, Button: tea.MouseLeft}))
+	if a.pane.view != view || a.pane.wrap != wrap {
+		t.Error("the drag re-rendered the document")
+	}
+	a.Update(tea.MouseReleaseMsg(tea.Mouse{X: border + 6, Y: y, Button: tea.MouseLeft}))
+	if a.drag != nil {
+		t.Fatal("the release should end the drag")
+	}
+	if a.pane.view == view && a.pane.wrap == wrap {
+		t.Error("the drag should render the document once it ends")
+	}
+}
+
+// A size that keeps changing is rendered once it settles: the panes move at
+// once, but the document is rendered again by the last timer only.
+func TestResizeRendersWhenItSettles(t *testing.T) {
+	a := newTestApp(t, filepath.Join(fixture(t), "a.md"))
+	a.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	if a.pane.view == nil {
+		t.Fatal("the first size should render at once")
+	}
+	_, cmd := a.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
+	if cmd == nil {
+		t.Fatal("a later size should wait for the drag to settle")
+	}
+	a.Update(tea.WindowSizeMsg{Width: 70, Height: 30}) // supersedes cmd
+	if a.pane.wrap != wrapWidth(100, a.opts.MaxWrap) {
+		t.Fatalf("the resize rendered at once: wrap %d", a.pane.wrap)
+	}
+	a.pane.view = nil             // so a render shows
+	a.update(relayoutMsg{gen: 1}) // a superseded timer
+	if a.pane.view != nil {
+		t.Error("a superseded resize rendered")
+	}
+	a.update(relayoutMsg{gen: a.layoutGen})
+	if a.pane.view == nil {
+		t.Fatal("the latest resize should render")
+	}
+	if a.pane.wrap != wrapWidth(a.pane.width, a.opts.MaxWrap) || a.pane.width != 70-a.bodyX() {
+		t.Errorf("pane %d cells wide, wrapped at %d", a.pane.width, a.pane.wrap)
+	}
+}
