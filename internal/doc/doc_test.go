@@ -284,6 +284,24 @@ func TestRendererReusesTermRenderers(t *testing.T) {
 	}
 }
 
+// A cache far larger than the document at hand is dropped, so a session that
+// visits many files doesn't keep every block it ever rendered.
+func TestRendererDropsStaleCache(t *testing.T) {
+	r := NewRenderer("notty")
+	stale := map[string][]string{}
+	for i := range minCachedBlocks + 1 {
+		stale[fmt.Sprintf("stale block %d\n", i)] = []string{"x"}
+	}
+	r.cache[40], r.widths = stale, []int{40}
+	d := Parse([]byte("small\n"))
+	if _, err := r.Render(d, 40); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(r.cache[40]); n > 2*len(d.Blocks) {
+		t.Errorf("cache kept %d blocks for a %d-block document", n, len(d.Blocks))
+	}
+}
+
 // Control sequences in a document are neutralised before rendering, while
 // Source keeps the original for copy-contents.
 func TestControlSequencesAreNeutralised(t *testing.T) {

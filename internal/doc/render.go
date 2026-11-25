@@ -32,6 +32,11 @@ const maxWidths = 4
 // for every width would cost more memory than it saves.
 const maxIdleTerms = 2
 
+// minCachedBlocks is the smallest cache a document is allowed before it can
+// be dropped for a smaller one: room for a handful of small files, so
+// switching tabs does not re-render them.
+const minCachedBlocks = 4096
+
 // seqBlocks is the largest batch of blocks rendered without worker
 // goroutines, which cost more than they save for a handful of blocks.
 const seqBlocks = 16
@@ -133,6 +138,13 @@ func (r *Renderer) Render(d *Doc, width int) (*Rendered, error) {
 	seen := map[string]bool{}
 	r.mu.Lock()
 	cache := r.widthCache(width)
+	if len(cache) > max(2*len(d.Blocks), minCachedBlocks) {
+		// The cache holds far more than this document needs: the session has
+		// moved on to other files, so start it over rather than keep every
+		// block ever rendered in memory.
+		cache = map[string][]string{}
+		r.cache[width] = cache
+	}
 	for i := range d.Blocks {
 		t := d.renderText(i)
 		texts[i] = t
