@@ -243,7 +243,7 @@ func (a *App) tabSpans(width int) (labels []string, first, last int, xs []int) {
 	labels = a.tabLabels()
 	w := make([]int, len(labels))
 	for i, l := range labels {
-		w[i] = ansi.StringWidth(l) + 1 // +1 for the gap after each tab
+		w[i] = cellWidth(l) + 1 // +1 for the gap after each tab
 	}
 	const arrow = 2
 	fits := func(first, last int) bool {
@@ -299,7 +299,7 @@ func (a *App) tabBar() string {
 	if last < len(labels)-1 {
 		right = th.tabFill.Render(" ›")
 	}
-	gap := a.width - ansi.StringWidth(line) - ansi.StringWidth(right)
+	gap := a.width - cellWidth(line) - cellWidth(right)
 	return fit(line+th.tabFill.Render(strings.Repeat(" ", max(gap, 0)))+right, a.width)
 }
 
@@ -308,7 +308,7 @@ func (a *App) tabAt(x int) int {
 	labels, first, _, xs := a.tabSpans(a.width)
 	for j, start := range xs {
 		i := first + j
-		if x >= start && x < start+ansi.StringWidth(labels[i]) {
+		if x >= start && x < start+cellWidth(labels[i]) {
 			return i
 		}
 	}

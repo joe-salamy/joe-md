@@ -798,7 +798,7 @@ func (a *App) emptyScreen(body []string) {
 	add := func(name, what string) {
 		if k := a.hint(ctxNormal, name); k != unbound {
 			rows = append(rows, row{k, what})
-			keyW = max(keyW, ansi.StringWidth(k))
+			keyW = max(keyW, cellWidth(k))
 		}
 	}
 	add("open_menu", "open a file")
@@ -808,12 +808,12 @@ func (a *App) emptyScreen(body []string) {
 	add("help", "show the keys")
 	add("quit", "quit")
 	for _, r := range rows {
-		w = max(w, keyW+2+ansi.StringWidth(r.what))
+		w = max(w, keyW+2+cellWidth(r.what))
 	}
 	const title = "no file open"
 	lines := []string{a.theme.tocLevel(0).Render(title), ""}
 	for _, r := range rows {
-		pad := strings.Repeat(" ", keyW-ansi.StringWidth(r.key)+2)
+		pad := strings.Repeat(" ", keyW-cellWidth(r.key)+2)
 		lines = append(lines, a.theme.tocCurrent.Render(r.key)+pad+a.theme.dim.Render(r.what))
 	}
 	top := max((len(body)-len(lines))/2, 0)
@@ -869,15 +869,15 @@ func (a *App) statusLine() string {
 		"  " + a.pane.Percent() + " "
 	right := th.statusDim.Render(keys+"   ") + th.status.Render(pos)
 
-	gap := a.width - ansi.StringWidth(left) - ansi.StringWidth(right)
+	gap := a.width - cellWidth(left) - cellWidth(right)
 	if gap < 1 {
 		// Squeeze the left side (name, tab count, message) so the position
 		// stays visible; drop the pending keys first if it still won't fit.
-		if a.width-ansi.StringWidth(right) < ansi.StringWidth(mode)+2 {
+		if a.width-cellWidth(right) < cellWidth(mode)+2 {
 			right = th.status.Render(pos)
 		}
-		left = ansi.Truncate(left, max(a.width-ansi.StringWidth(right)-1, 0), "…")
-		gap = max(a.width-ansi.StringWidth(left)-ansi.StringWidth(right), 1)
+		left = ansi.Truncate(left, max(a.width-cellWidth(right)-1, 0), "…")
+		gap = max(a.width-cellWidth(left)-cellWidth(right), 1)
 		return fit(left+th.status.Render(strings.Repeat(" ", gap))+right, a.width)
 	}
 	return left + th.status.Render(strings.Repeat(" ", gap)) + right

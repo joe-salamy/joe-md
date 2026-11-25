@@ -12,7 +12,6 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 )
 
 // The search bar sits above the status line. ripgrep only runs when enter is
@@ -522,7 +521,7 @@ func (a *App) barView() string {
 	if a.typing {
 		left, right := a.typingBar()
 		line := left + a.input.View()
-		gap := w - ansi.StringWidth(line) - ansi.StringWidth(right)
+		gap := w - cellWidth(line) - cellWidth(right)
 		return fit(line+strings.Repeat(" ", max(gap, 0))+right, w)
 	}
 	if a.searching != "" {
@@ -542,7 +541,7 @@ func (a *App) barView() string {
 			right = th.bar.Render(count) + th.barDim.Render("  "+a.hint(ctxNormal, "next_match")+"/"+a.hint(ctxNormal, "prev_match")+" · "+a.hint(ctxNormal, "toggle_results")+" list ")
 		}
 		left := th.barPrompt.Render(" / ") + th.bar.Render(q)
-		gap := w - ansi.StringWidth(left) - ansi.StringWidth(right)
+		gap := w - cellWidth(left) - cellWidth(right)
 		return fit(left+strings.Repeat(" ", max(gap, 1))+right, w)
 	}
 	return fit(th.barDim.Render(" "+a.hint(ctxNormal, "search_file")+" search file   "+a.hint(ctxNormal, "search_files")+" search "+
@@ -577,7 +576,7 @@ func (a *App) typingBar() (left, right string) {
 // prompt and chips.
 func (a *App) inputWidth() int {
 	left, right := a.typingBar()
-	return max(a.width-ansi.StringWidth(left)-ansi.StringWidth(right)-1, 1)
+	return max(a.width-cellWidth(left)-cellWidth(right)-1, 1)
 }
 
 // crossTotal is the number of matches across all files when the current
