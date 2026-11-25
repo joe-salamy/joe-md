@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"charm.land/glamour/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -212,16 +213,23 @@ func expandTabs(s string) string {
 		return s
 	}
 	var sb strings.Builder
+	sb.Grow(len(s) + tabWidth)
 	col := 0
 	for _, c := range s {
 		if c == '\t' {
 			n := tabWidth - col%tabWidth
-			sb.WriteString(strings.Repeat(" ", n))
+			for range n {
+				sb.WriteByte(' ')
+			}
 			col += n
 			continue
 		}
 		sb.WriteRune(c)
-		col += ansi.StringWidth(string(c))
+		if c < utf8.RuneSelf {
+			col++ // no string per rune: a plain-text page is mostly ASCII
+		} else {
+			col += ansi.StringWidth(string(c))
+		}
 	}
 	return sb.String()
 }
