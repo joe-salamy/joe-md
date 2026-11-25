@@ -354,7 +354,7 @@ func (r *Rendered) HeadingLine(d *Doc, h int) int {
 	return r.spans[d.Headings[h].Block].RenStart
 }
 
-// lerp scales an offset within a range of size from to one of size to.
+// lerp scales off from a range of size from to one of size to.
 func lerp(off, from, to int) int {
 	if from <= 0 || to <= 0 {
 		return 0
@@ -362,6 +362,8 @@ func lerp(off, from, to int) int {
 	return min(off*to/from, to-1)
 }
 
+// lerpUp is lerp rounding up, so that RenderedToSource inverts
+// SourceToRendered.
 func lerpUp(off, from, to int) int {
 	if from <= 0 || to <= 0 {
 		return 0
