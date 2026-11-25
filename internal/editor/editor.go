@@ -14,8 +14,9 @@ import (
 )
 
 // plugin is the micro plugin that writes the cursor line to
-// $JOE_MD_CURSOR_FILE after every event. It is inert when micro is started
-// by anything other than joe-md.
+// $JOE_MD_CURSOR_FILE when micro quits (and after every event on micro 2.0.14
+// and later). It is inert when micro is started by anything other than
+// joe-md.
 //
 //go:embed joemd.lua
 var plugin []byte
