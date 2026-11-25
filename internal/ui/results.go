@@ -20,13 +20,14 @@ type Results struct {
 	req  search.Request
 	res  search.Result
 	rows []resultRow
+	base string // what paths show relative to: relBase(req), worked out once
 }
 
 // resultRow is the nth match on line res.Matches[match].
 type resultRow struct{ match, nth int }
 
 func newResults(req search.Request, res search.Result) *Results {
-	r := &Results{req: req, res: res}
+	r := &Results{req: req, res: res, base: relBase(req)}
 	for i, m := range res.Matches {
 		for n := range max(len(m.Spans), 1) {
 			r.rows = append(r.rows, resultRow{i, n})
@@ -161,7 +162,7 @@ func (r *Results) location(i int) (path, line string) {
 	if r.req.Scope == search.File {
 		return "", strconv.Itoa(m.Line)
 	}
-	return relPath(r.req, m.Path), ":" + strconv.Itoa(m.Line)
+	return relPathFrom(r.req, r.base, m.Path), ":" + strconv.Itoa(m.Line)
 }
 
 // scrollTo drops the start of text, behind "…", if the first of spans would
@@ -190,11 +191,17 @@ func scrollTo(text string, spans [][2]int, w int) (string, [][2]int) {
 }
 
 func relPath(req search.Request, path string) string {
+	return relPathFrom(req, relBase(req), path)
+}
+
+// relPathFrom is relPath with the base already worked out, for a caller that
+// shows many paths from one request.
+func relPathFrom(req search.Request, base, path string) string {
 	if req.Scope == search.File {
 		return filepath.Base(path)
 	}
-	if root := relBase(req); root != "" {
-		if rel, err := filepath.Rel(root, path); err == nil {
+	if base != "" {
+		if rel, err := filepath.Rel(base, path); err == nil {
 			return rel
 		}
 	}
