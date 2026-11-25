@@ -159,7 +159,13 @@ func (r *Renderer) Render(d *Doc, width int) (*Rendered, error) {
 		return nil, err
 	}
 
-	out := &Rendered{Lines: []string{""}, spans: make([]span, len(d.Blocks))}
+	// A block renders to at least one line and is followed by a separator, so
+	// the source line count and the blocks size the slice well enough that
+	// appending to it does not grow it many times over.
+	out := &Rendered{
+		Lines: make([]string, 1, d.Lines+len(d.Blocks)+1),
+		spans: make([]span, len(d.Blocks)),
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for i, t := range texts {
