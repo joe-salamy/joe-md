@@ -160,6 +160,25 @@ func TestLeadingRuleIsNotFrontMatter(t *testing.T) {
 	}
 }
 
+// Front matter is hidden whatever its line endings, with the line count kept.
+func TestFrontMatterLineEndings(t *testing.T) {
+	for _, src := range []string{
+		"---\r\ntitle: x\r\n---\r\n# H\r\n",
+		"---\ntitle: x\n...\n# H\n",
+		"---\ntitle: x\n---",
+	} {
+		d := Parse([]byte(src))
+		for _, b := range d.Blocks {
+			if strings.Contains(b.Text, "title") {
+				t.Errorf("%q: front matter not hidden: %q", src, b.Text)
+			}
+		}
+		if want := strings.Count(strings.TrimSuffix(src, "\n"), "\n") + 1; d.Lines != want {
+			t.Errorf("%q: %d lines, want %d", src, d.Lines, want)
+		}
+	}
+}
+
 // Standalone bold lines act as one-below-deepest pseudo-headings; bullets
 // starting with bold stay out.
 func TestStandaloneBoldHeadings(t *testing.T) {

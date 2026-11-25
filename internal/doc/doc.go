@@ -349,24 +349,39 @@ func blankFrontMatter(src []byte) []byte {
 	if !bytes.HasPrefix(src, []byte("---\n")) && !bytes.HasPrefix(src, []byte("---\r\n")) {
 		return src
 	}
-	lines := bytes.SplitAfter(src, []byte("\n"))
-	if len(lines) < 2 || !yamlKey.Match(bytes.TrimRight(lines[1], "\r\n")) &&
-		!isFence(lines[1]) {
+	pos := bytes.IndexByte(src, '\n') + 1
+	line, _ := nextLine(src, pos)
+	if line == nil || !yamlKey.Match(bytes.TrimRight(line, "\r\n")) && !isFence(line) {
 		return src
 	}
-	for i := 1; i < len(lines); i++ {
-		if isFence(lines[i]) {
+	// Scan for the closing fence rather than splitting the whole document
+	// into lines: most of it is below the front matter and not looked at.
+	n := 1 // the opening ---
+	for pos < len(src) {
+		n++
+		line, next := nextLine(src, pos)
+		if isFence(line) {
 			out := make([]byte, 0, len(src))
-			for j := 0; j <= i; j++ {
+			for range n {
 				out = append(out, '\n')
 			}
-			for _, l := range lines[i+1:] {
-				out = append(out, l...)
-			}
-			return out
+			return append(out, src[next:]...)
 		}
+		pos = next
 	}
 	return src
+}
+
+// nextLine returns the line starting at pos, newline included, and the offset
+// of the line after it.
+func nextLine(src []byte, pos int) (line []byte, next int) {
+	if pos >= len(src) {
+		return nil, len(src)
+	}
+	if i := bytes.IndexByte(src[pos:], '\n'); i >= 0 {
+		return src[pos : pos+i+1], pos + i + 1
+	}
+	return src[pos:], len(src)
 }
 
 func isFence(l []byte) bool {
