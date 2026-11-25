@@ -214,12 +214,15 @@ func (a *App) refreshSearch(p *Pane) tea.Cmd {
 	}
 	req := search.Request{Query: q, Mode: p.match.mode, Scope: search.File, Root: search.Root(p.doc.Path, search.File)}
 	msg := searchDoneMsg{pane: p, req: req, purpose: searchRefresh}
+	// A refresh is best-effort: bound it so a stuck ripgrep cannot keep
+	// running after the pane has moved on. The command reads the pane's
+	// document and view here, before the background goroutine runs, so a
+	// reload or re-render cannot race with it.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	cmd := searchCmd(ctx, msg)
 	return func() tea.Msg {
-		// A refresh is best-effort: bound it so a stuck ripgrep cannot keep
-		// running after the pane has moved on.
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		return searchCmd(ctx, msg)()
+		return cmd()
 	}
 }
 
