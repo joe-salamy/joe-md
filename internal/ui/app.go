@@ -214,6 +214,9 @@ func (a *App) tocWidth() int {
 	for _, l := range a.tab().leaves() {
 		w = max(w, l.pane.toc.Width(l.pane.doc, a.width))
 	}
+	// A narrow terminal: the sidebar has a minimum width, but the pane and its
+	// separator come first, so the frame never grows wider than the screen.
+	w = min(w, max(a.width-2, 0))
 	a.tocW, a.tocWOK = w, true
 	return w
 }
@@ -692,6 +695,12 @@ func (a *App) View() tea.View {
 		screen = append(screen, a.barView())
 	}
 	screen = append(screen, a.statusLine())
+	// A terminal shorter than the bars still gets exactly its rows: the
+	// status line stays, and the rows just above it — the search bar, the
+	// results panel, then the body — give way.
+	if over := len(screen) - a.height; over > 0 {
+		screen = append(screen[:max(len(screen)-1-over, 0)], screen[len(screen)-1])
+	}
 	if a.menu != nil {
 		x, y, _, _ := a.menuRect()
 		overlay(screen, a.menuView(), x, y, a.width)
