@@ -48,17 +48,21 @@ func popupRows(h int) int { return max(h-3, 1) }
 // (popupRows(h) of them), then a footer with left and right parts.
 func drawBox(th theme, title string, lines []string, left, right string, w, h int) []string {
 	inner := max(w-2, 1)
-	b := th.menuBorder.Render
+	// Every row has the same side border: styling it once, rather than once
+	// per row, keeps a pop-up cheap to draw.
+	edge := th.menuBorder.Render("│")
+	top := th.menuBorder.Render("╭─") + th.menuTitle.Render(title) +
+		th.menuBorder.Render(strings.Repeat("─", max(inner-1-cellWidth(title), 0))+"╮")
+	bottom := th.menuBorder.Render("╰" + strings.Repeat("─", inner) + "╯")
 	out := make([]string, 0, h)
-	out = append(out, b("╭─")+th.menuTitle.Render(title)+
-		b(strings.Repeat("─", max(inner-1-ansi.StringWidth(title), 0))+"╮"))
+	out = append(out, top)
 	for _, l := range lines {
-		out = append(out, b("│")+fit(l, inner)+b("│"))
+		out = append(out, edge+fit(l, inner)+edge)
 	}
-	left = ansi.Truncate(left, max(inner-ansi.StringWidth(right), 0), "")
-	gap := inner - ansi.StringWidth(left) - ansi.StringWidth(right)
-	out = append(out, b("│")+fit(left+"\x1b[0m"+strings.Repeat(" ", max(gap, 0))+right, inner)+b("│"))
-	out = append(out, b("╰"+strings.Repeat("─", inner)+"╯"))
+	left = ansi.Truncate(left, max(inner-cellWidth(right), 0), "")
+	gap := inner - cellWidth(left) - cellWidth(right)
+	out = append(out, edge+fit(left+"\x1b[0m"+strings.Repeat(" ", max(gap, 0))+right, inner)+edge)
+	out = append(out, bottom)
 	return out[:min(len(out), h)]
 }
 
@@ -83,8 +87,8 @@ func popupMouse(msg tea.MouseMsg, x, y, w, h int) (step int, outside bool) {
 }
 
 // overlay draws box over the screen lines at column x, row y. The screen
-// line's own style resumes after the box because TruncateLeft keeps the
-// escape codes before the cut.
+// line's own style resumes after the box because the cut keeps the escape
+// codes before the boundary.
 func overlay(screen, box []string, x, y, width int) {
 	for i, l := range box {
 		r := y + i
@@ -92,9 +96,13 @@ func overlay(screen, box []string, x, y, width int) {
 			continue
 		}
 		s := screen[r]
-		left := ansi.Truncate(s, x, "")
-		left += "\x1b[0m" + strings.Repeat(" ", max(x-ansi.StringWidth(left), 0))
-		right := ansi.TruncateLeft(s, x+ansi.StringWidth(l), "")
+		bw := cellWidth(l)
+		left, right, ok := cutCells(s, x, x+bw)
+		if !ok {
+			left = ansi.Truncate(s, x, "")
+			right = ansi.TruncateLeft(s, x+bw, "")
+		}
+		left += "\x1b[0m" + strings.Repeat(" ", max(x-cellWidth(left), 0))
 		screen[r] = fit(left+l+"\x1b[0m"+right, width)
 	}
 }
