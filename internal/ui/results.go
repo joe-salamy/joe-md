@@ -108,14 +108,14 @@ func (r *Results) Render(width, height int, focused bool, th theme) []string {
 	}
 	title += " · " + r.req.Scope.String() + " " + sanitizeLine(openRoot(r.req)) + " "
 	title = th.separator.Render("─") + th.resultsTitle.Render(ansi.Truncate(title, width-2, "…"))
-	out = append(out, fit(title+th.separator.Render(strings.Repeat("─", max(0, width-ansi.StringWidth(title)))), width))
+	out = append(out, fit(title+th.separator.Render(strings.Repeat("─", max(0, width-cellWidth(title)))), width))
 
 	// The line numbers always show; long paths lose their end instead.
 	pathW, lineW := 0, 0
 	for i := r.offset; i < n && i < r.offset+height-1; i++ {
 		path, line := r.location(i)
 		path = sanitizeLine(path)
-		pathW, lineW = max(pathW, ansi.StringWidth(path)), max(lineW, len(line))
+		pathW, lineW = max(pathW, cellWidth(path)), max(lineW, len(line))
 	}
 	pathW = min(pathW, max(width/3-lineW, 8))
 	for i := r.offset; i < n && len(out) < height; i++ {
@@ -125,7 +125,7 @@ func (r *Results) Render(width, height int, focused bool, th theme) []string {
 		if path == "" { // a file search: line numbers right-aligned
 			loc = strings.Repeat(" ", lineW-len(line)) + line
 		} else {
-			loc = path + line + strings.Repeat(" ", pathW-ansi.StringWidth(path)+lineW-len(line))
+			loc = path + line + strings.Repeat(" ", pathW-cellWidth(path)+lineW-len(line))
 		}
 		row := r.rows[i]
 		text, spans := trimMatch(r.res.Matches[row.match])
@@ -133,7 +133,7 @@ func (r *Results) Render(width, height int, focused bool, th theme) []string {
 		if row.nth < len(spans) {
 			span = spans[row.nth : row.nth+1]
 		}
-		text, span = scrollTo(text, span, width-ansi.StringWidth(loc)-3)
+		text, span = scrollTo(text, span, width-cellWidth(loc)-3)
 		if i == r.cursor {
 			style := th.tocCurrent
 			if focused {
@@ -142,7 +142,7 @@ func (r *Results) Render(width, height int, focused bool, th theme) []string {
 			// Padded before styling, not with fit, whose reset would end the
 			// highlight where the text does.
 			l := ansi.Truncate(" "+loc+"  "+text, width, "")
-			out = append(out, style.Render(l+strings.Repeat(" ", max(width-ansi.StringWidth(l), 0))))
+			out = append(out, style.Render(l+strings.Repeat(" ", max(width-cellWidth(l), 0))))
 			continue
 		}
 		row2 := " " + th.resultsPath.Render(path) + th.resultsLine.Render(loc[len(path):]) + "  " +
@@ -168,7 +168,7 @@ func (r *Results) location(i int) (path, line string) {
 // scrollTo drops the start of text, behind "…", if the first of spans would
 // end past w cells, keeping a little of the text before it.
 func scrollTo(text string, spans [][2]int, w int) (string, [][2]int) {
-	if len(spans) == 0 || w <= 0 || ansi.StringWidth(text[:spans[0][1]]) <= w {
+	if len(spans) == 0 || w <= 0 || cellWidth(text[:spans[0][1]]) <= w {
 		return text, spans
 	}
 	cut := spans[0][0]

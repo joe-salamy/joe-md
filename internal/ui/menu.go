@@ -576,7 +576,7 @@ func (a *App) menuView() []string {
 	rows := a.menuRows()
 
 	title := sanitizeLine(tildePath(m.dir))
-	if over := ansi.StringWidth(title) - (inner - 4); over > 0 {
+	if over := cellWidth(title) - (inner - 4); over > 0 {
 		title = ansi.TruncateLeft(title, over+1, "…")
 	}
 	lines := make([]string, 0, rows)
@@ -649,7 +649,7 @@ func (m *Menu) count(i int) string {
 func (a *App) filterWidth() int {
 	_, _, w, _ := a.menuRect()
 	widest := " " + a.menu.count(len(a.menu.shown)-1) + " "
-	return max(w-2-ansi.StringWidth(widest)-4, 1)
+	return max(w-2-cellWidth(widest)-4, 1)
 }
 
 // menuEntry draws one row. Marked files get a full-width highlight, like a
@@ -675,7 +675,7 @@ func (a *App) menuEntry(e entry, cursor, marked, open bool, width int) string {
 			style = th.tocCursor
 		}
 		text := ansi.Truncate(" "+glyph+name, width, "…")
-		return style.Render(text + strings.Repeat(" ", max(width-ansi.StringWidth(text), 0)))
+		return style.Render(text + strings.Repeat(" ", max(width-cellWidth(text), 0)))
 	}
 	style := th.menuFile
 	switch {

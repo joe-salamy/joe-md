@@ -7,8 +7,6 @@ import (
 	"strings"
 
 	"github.com/joe-salamy/joe-md/internal/doc"
-
-	"github.com/charmbracelet/x/ansi"
 )
 
 // Pane is a scrollable view of one rendered document.
@@ -269,7 +267,7 @@ func (p *Pane) Render(th theme) []string {
 		l := ""
 		if r := p.offset + y; p.view != nil && r < len(p.view.Lines) {
 			l = p.decorate(r, p.view.Lines[r], th)
-			if pad := min(margin, p.width-ansi.StringWidth(l)); pad > 0 {
+			if pad := min(margin, p.width-cellWidth(l)); pad > 0 {
 				l = strings.Repeat(" ", pad) + l
 			}
 		}

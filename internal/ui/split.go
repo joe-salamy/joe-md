@@ -432,10 +432,10 @@ func (a *App) paneStatus(n *Node, focused bool) string {
 		left += " [bind]"
 	}
 	right := " " + strconv.Itoa(p.TopSource()+1) + "/" + strconv.Itoa(p.doc.Lines) + "  " + p.Percent() + " "
-	gap := n.w - ansi.StringWidth(left) - ansi.StringWidth(right)
+	gap := n.w - cellWidth(left) - cellWidth(right)
 	if gap < 1 {
 		l := ansi.Truncate(left, n.w, "")
-		return style.Render(l + strings.Repeat(" ", max(n.w-ansi.StringWidth(l), 0)))
+		return style.Render(l + strings.Repeat(" ", max(n.w-cellWidth(l), 0)))
 	}
 	return style.Render(left + strings.Repeat(" ", gap) + right)
 }

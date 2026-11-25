@@ -30,7 +30,7 @@ func (t *TOC) Width(d *doc.Doc, screen int) int {
 		minLevel = 6
 	}
 	for _, h := range d.Headings {
-		want = max(want, 2*(h.Level-minLevel)+ansi.StringWidth(h.Text)+3)
+		want = max(want, 2*(h.Level-minLevel)+cellWidth(h.Text)+3)
 	}
 	return max(tocMinWidth, min(want, tocMaxWidth, screen/3))
 }
@@ -92,7 +92,7 @@ func (t *TOC) Render(d *doc.Doc, f *tocFilter, current int, focused bool, width,
 		h := d.Headings[i]
 		text := strings.Repeat("  ", h.Level-minLevel) + h.Text
 		text = " " + ansi.Truncate(text, width-2, "…")
-		text += strings.Repeat(" ", max(0, width-ansi.StringWidth(text)))
+		text += strings.Repeat(" ", max(0, width-cellWidth(text)))
 		style := th.tocLevel(h.Level - minLevel)
 		switch {
 		case focused && i == t.cursor:
