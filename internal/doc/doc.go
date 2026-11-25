@@ -386,6 +386,8 @@ func inlineText(n ast.Node, src []byte) string {
 			if t.SoftLineBreak() {
 				sb.WriteByte(' ')
 			}
+		case *ast.AutoLink:
+			sb.Write(t.Label(src))
 		case *ast.String:
 			sb.Write(t.Value)
 		}

@@ -180,6 +180,16 @@ func TestStandaloneBoldHeadings(t *testing.T) {
 	}
 }
 
+// A heading's text is what the table of contents shows, so inline code,
+// links and autolinks must contribute their text.
+func TestHeadingText(t *testing.T) {
+	d := Parse([]byte("# Visit <https://example.com>, read `code` and [link](http://x)\n"))
+	want := "Visit https://example.com, read code and link"
+	if len(d.Headings) != 1 || d.Headings[0].Text != want {
+		t.Errorf("headings: %+v, want %q", d.Headings, want)
+	}
+}
+
 func TestNoBoldWhenMixedOrAbsent(t *testing.T) {
 	d := Parse([]byte("**Bold** and plain\n\n- **lead** item\n\nplain\n"))
 	if len(d.Headings) != 0 {
