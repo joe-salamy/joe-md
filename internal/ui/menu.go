@@ -121,8 +121,9 @@ func (a *App) menuLoad(dir, sel string) bool {
 	return true
 }
 
-// loadIgnored asks git which entries are ignored, once per listing. It is
-// only called when the menu actually uses the answer.
+// ensureMenuIgnored loads the menu's ignored flags if the listing does not
+// have them yet, so turning the ignored display on costs one git call per
+// directory rather than one per toggle.
 func (a *App) ensureMenuIgnored() {
 	if a.menu == nil || !a.menuHideIgnored && !a.menuDimIgnored {
 		return
@@ -132,6 +133,8 @@ func (a *App) ensureMenuIgnored() {
 	}
 }
 
+// loadIgnored asks git which entries of the listing are ignored, once per
+// listing: later calls are free. A failure comes back as a warning.
 func (m *Menu) loadIgnored() string {
 	if m.ignoredLoaded {
 		return ""
