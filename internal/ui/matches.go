@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/joe-salamy/joe-md/internal/doc"
 	"github.com/joe-salamy/joe-md/internal/search"
@@ -292,7 +293,7 @@ func (m *matches) findInBlock(v *doc.Rendered, b int) [][]piece {
 	start, end := v.BlockSpan(b)
 	plain := make([]string, end-start)
 	for r := start; r < end; r++ {
-		plain[r-start] = ansi.Strip(v.Lines[r])
+		plain[r-start] = plainLine(v.Lines[r])
 	}
 	var out [][]piece
 	if m.pat != nil {
@@ -313,19 +314,34 @@ func (m *matches) findInBlock(v *doc.Rendered, b int) [][]piece {
 	return out
 }
 
+// plainLine is l without the styling glamour gives it. An escape sequence
+// starts with ESC or a C1 control, and a line with neither is already plain:
+// that is every line of a document rendered without styling, which costs
+// more to strip than the rest of the search.
+func plainLine(l string) string {
+	if strings.IndexByte(l, 0x1b) < 0 && strings.IndexByte(l, 0x9b) < 0 {
+		return l
+	}
+	return ansi.Strip(l)
+}
+
 // findTerms returns the cells [start, end) of plain-text line that match any
 // term, ignoring case, one per occurrence, sorted.
 func findTerms(line string, terms []string) [][2]int {
 	if line == "" || len(terms) == 0 {
 		return nil
 	}
-	runes := []rune(line)
-	folded := make([]rune, len(runes))
-	cells := make([]int, len(runes)+1) // cells[i] is the column where rune i starts
-	for i, r := range runes {
-		folded[i] = unicode.ToLower(r)
-		cells[i+1] = cells[i] + ansi.StringWidth(string(r))
+	folded := make([]rune, 0, len(line))
+	cells := make([]int, 0, len(line)+1) // cells[i] is the column where rune i starts
+	c := 0
+	for j := 0; j < len(line); {
+		r, size := utf8.DecodeRuneInString(line[j:])
+		folded = append(folded, unicode.ToLower(r))
+		cells = append(cells, c)
+		c += runeWidth(line[j:j+size], r)
+		j += size
 	}
+	cells = append(cells, c)
 	var out [][2]int
 	for _, t := range terms {
 		term := []rune(strings.ToLower(t))
@@ -362,19 +378,6 @@ func findPattern(lines []string, re *regexp.Regexp) [][]piece {
 		sb.WriteString(lines[i])
 	}
 	text := sb.String()
-	cells := make([][]int, len(lines)) // cells[i][b] is the column of byte b of line i, once needed
-	col := func(i, b int) int {
-		if cells[i] == nil {
-			cells[i] = make([]int, len(lines[i])+1)
-			c := 0
-			for j, r := range lines[i] {
-				cells[i][j] = c
-				c += ansi.StringWidth(string(r))
-			}
-			cells[i][len(lines[i])] = c
-		}
-		return cells[i][b]
-	}
 	var out [][]piece
 	for _, loc := range re.FindAllStringIndex(text, -1) {
 		if loc[0] == loc[1] {
@@ -392,7 +395,7 @@ func findPattern(lines []string, re *regexp.Regexp) [][]piece {
 				e = len(strings.TrimRight(l[:e], " \u00a0"))
 			}
 			if s < e {
-				ps = append(ps, piece{i, col(i, s), col(i, e)})
+				ps = append(ps, piece{i, colOf(l, s), colOf(l, e)})
 			}
 		}
 		if len(ps) > 0 {
@@ -400,6 +403,29 @@ func findPattern(lines []string, re *regexp.Regexp) [][]piece {
 		}
 	}
 	return out
+}
+
+// runeWidth is the width of one rune of plain text, r, written as s. Only
+// printable ASCII is one cell fast: everything else goes through the ANSI
+// width rules, which the highlights must agree with.
+func runeWidth(s string, r rune) int {
+	if r >= ' ' && r < 0x7f {
+		return 1
+	}
+	return ansi.StringWidth(s)
+}
+
+// colOf is the cell column of byte b in l, a line of plain text: printable
+// ASCII is one cell per byte, and only a line holding something else needs
+// the width rules.
+func colOf(l string, b int) int {
+	b = min(b, len(l))
+	for i := 0; i < b; i++ {
+		if c := l[i]; c < ' ' || c >= 0x7f {
+			return ansi.StringWidth(l[:b])
+		}
+	}
+	return b
 }
 
 // decorate applies search highlights to rendered line r.
