@@ -248,21 +248,14 @@ func Parse(orig []byte) *Doc {
 // rendered, so a document cannot drive the terminal. Newlines, carriage
 // returns and tabs are kept: they are ordinary markdown.
 func sanitizeControls(src []byte) []byte {
-	clean := true
-	for i := 0; i < len(src); {
-		r, size := utf8.DecodeRune(src[i:])
-		if isTerminalControl(r) {
-			clean = false
-			break
-		}
-		i += size
-	}
-	if clean {
+	first := controlAt(src)
+	if first < 0 {
 		return src
 	}
-	var b strings.Builder
+	var b bytes.Buffer
 	b.Grow(len(src))
-	for i := 0; i < len(src); {
+	b.Write(src[:first])
+	for i := first; i < len(src); {
 		r, size := utf8.DecodeRune(src[i:])
 		if isTerminalControl(r) {
 			b.WriteByte(' ')
@@ -271,7 +264,27 @@ func sanitizeControls(src []byte) []byte {
 		}
 		i += size
 	}
-	return []byte(b.String())
+	return b.Bytes()
+}
+
+// controlAt returns the offset of the first terminal control character in
+// src, or -1. It reads ASCII a byte at a time, which is most of a document.
+func controlAt(src []byte) int {
+	for i := 0; i < len(src); {
+		if c := src[i]; c < utf8.RuneSelf {
+			if c == 0x7f || c < 0x20 && c != '\n' && c != '\r' && c != '\t' {
+				return i
+			}
+			i++
+			continue
+		}
+		r, size := utf8.DecodeRune(src[i:])
+		if isTerminalControl(r) {
+			return i
+		}
+		i += size
+	}
+	return -1
 }
 
 func isTerminalControl(r rune) bool {
