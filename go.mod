@@ -38,3 +38,5 @@ require (
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.24.0 // indirect
 )
+
+replace charm.land/glamour/v2 => ./third_party/glamour

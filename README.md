@@ -13,22 +13,25 @@ characters like `*` and `#` stay as they are.
 ## Install
 
 ```sh
-go install github.com/joe-salamy/joe-md@latest
+git clone https://github.com/joe-salamy/joe-md.git ~/Code/joe-md
+go -C ~/Code/joe-md install .
 ```
 
 This needs Go 1.27 or newer and puts `joe-md` in `$GOBIN` (`~/go/bin` by
-default), which should be on your `PATH`. Run the same command again to update;
-`joe-md -version` shows what you have.
+default), which should be on your `PATH`. To update, `git pull` and run the
+same `go install` again; `joe-md -version` shows what you have.
 
-The repository is private, so Go has to fetch it with your GitHub login and
-skip the public module proxy and checksum database (`sum.golang.org`), which
-can't see it. Without this, the install fails with `verifying module: ...
-404 Not Found`. Once on each machine, before the first install:
+`go install github.com/joe-salamy/joe-md@latest` does not work: joe-md builds
+against a patched copy of glamour in `third_party/glamour` through a `replace`
+line in `go.mod`, and `go install pkg@version` refuses modules with `replace`.
+The patch (`third_party/glamour/ansi/elements.go`, marked `joe-md patch`) shows
+a link `[name](url)` as just `name`, clickable in terminals with OSC 8
+hyperlinks, instead of `name url`; `[](url)` still shows the URL. It is
+glamour v2.0.1 without its tests, examples and gallery; to move to a newer
+glamour, copy the new release over it and re-apply the patch.
 
-```sh
-go env -w GOPRIVATE='github.com/joe-salamy/*'
-gh auth setup-git   # lets git use the gh CLI's login for github.com
-```
+The repository is private, so cloning needs your GitHub login
+(`gh auth setup-git` lets git use the gh CLI's login for github.com).
 
 joe-md also runs two programs, which it expects on your `PATH`:
 
