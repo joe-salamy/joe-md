@@ -375,7 +375,9 @@ func (b *border) drag(x, y int) {
 	}
 }
 
-// renderNode draws n in exactly n.h lines of n.w cells.
+// renderNode draws n in exactly n.h lines of n.w cells. Every child fills its
+// own columns exactly, so stitching them needs no width pass: a pane's Render
+// pads its lines to its width, and so do its status row and the separators.
 func (a *App) renderNode(t *Tab, n *Node) []string {
 	var out []string
 	switch {
@@ -397,11 +399,12 @@ func (a *App) renderNode(t *Tab, n *Node) []string {
 				if i > 0 {
 					sb.WriteString(sep)
 				}
-				l := strings.Repeat(" ", n.kids[i].w)
 				if y < len(c) {
-					l = c[y]
+					sb.WriteString(c[y])
+				} else {
+					sb.WriteString(strings.Repeat(" ", n.kids[i].w))
 				}
-				sb.WriteString(l + "\x1b[0m")
+				sb.WriteString("\x1b[0m")
 			}
 			out[y] = sb.String()
 		}
@@ -413,11 +416,7 @@ func (a *App) renderNode(t *Tab, n *Node) []string {
 	for len(out) < n.h {
 		out = append(out, "")
 	}
-	out = out[:n.h]
-	for y := range out {
-		out[y] = fit(out[y], n.w)
-	}
-	return out
+	return out[:n.h]
 }
 
 // paneStatus is a pane's own status row, shown when a tab has several: the
@@ -435,7 +434,8 @@ func (a *App) paneStatus(n *Node, focused bool) string {
 	right := " " + strconv.Itoa(p.TopSource()+1) + "/" + strconv.Itoa(p.doc.Lines) + "  " + p.Percent() + " "
 	gap := n.w - ansi.StringWidth(left) - ansi.StringWidth(right)
 	if gap < 1 {
-		return style.Render(ansi.Truncate(left, n.w, ""))
+		l := ansi.Truncate(left, n.w, "")
+		return style.Render(l + strings.Repeat(" ", max(n.w-ansi.StringWidth(l), 0)))
 	}
 	return style.Render(left + strings.Repeat(" ", gap) + right)
 }

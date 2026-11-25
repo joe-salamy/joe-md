@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func ctrlW(a *App, keys ...string) tea.Cmd {
@@ -209,5 +210,27 @@ func TestScrollBindAndReload(t *testing.T) {
 	press(a, "r")
 	if l.doc.Lines != r.doc.Lines || !strings.Contains(string(r.doc.Source), "new") {
 		t.Fatal("reload should reach both panes")
+	}
+}
+
+// Every line a split draws fills its cells exactly, which is what lets
+// renderNode stitch the children without re-fitting each line: a pane's
+// lines and its status row are exact even when the pane is too narrow for
+// the status text.
+func TestSplitLinesFillTheirCells(t *testing.T) {
+	dir := fixture(t)
+	for _, size := range [][2]int{{13, 5}, {20, 8}, {40, 12}, {100, 30}} {
+		a := newTestApp(t, filepath.Join(dir, "a.md"))
+		a.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		ctrlW(a, "v")
+		ctrlW(a, "s")
+		ctrlW(a, "h")
+		ctrlW(a, "v")
+		root := a.tab().root
+		for y, line := range a.renderNode(a.tab(), root) {
+			if w := ansi.StringWidth(line); w != root.w {
+				t.Errorf("%dx%d: row %d is %d cells wide, want %d", size[0], size[1], y, w, root.w)
+			}
+		}
 	}
 }
