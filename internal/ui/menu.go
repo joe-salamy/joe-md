@@ -150,7 +150,14 @@ func (m *Menu) loadIgnored() string {
 // listDir reads dir: directories first, then files, each sorted by name
 // ignoring case, after a ../ entry unless dir is the root.
 func listDir(dir string) ([]entry, error) {
-	des, err := os.ReadDir(dir)
+	f, err := os.Open(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	// ReadDir(-1) leaves the entries in directory order: they are sorted
+	// below, and os.ReadDir's byte-order sort would only be thrown away.
+	des, err := f.ReadDir(-1)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +176,10 @@ func listDir(dir string) ([]entry, error) {
 		if a.dir != b.dir {
 			return natural.DirsFirst(a.dir)
 		}
-		return natural.Compare(a.name, b.name)
+		if c := natural.Compare(a.name, b.name); c != 0 {
+			return c
+		}
+		return strings.Compare(a.name, b.name) // differ only in case: one fixed order
 	})
 	if filepath.Dir(dir) != dir {
 		es = append([]entry{{name: "..", dir: true, parent: true}}, es...)

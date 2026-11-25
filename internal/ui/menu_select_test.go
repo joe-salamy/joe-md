@@ -312,3 +312,28 @@ func TestMenuSplitOpensSiblings(t *testing.T) {
 		t.Fatalf("panes = %q, want two a.md and the focused b.md", got)
 	}
 }
+
+// listDir lists directories first, then names in natural order ignoring case,
+// with one fixed order for names that differ only in case.
+func TestListDirOrder(t *testing.T) {
+	dir := t.TempDir()
+	for _, n := range []string{"b.md", "B.md", "a10.md", "a9.md", "keep.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(dir, "Docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	es, err := listDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, e := range es {
+		got = append(got, e.name)
+	}
+	if want := ".. Docs a9.md a10.md B.md b.md keep.txt"; strings.Join(got, " ") != want {
+		t.Fatalf("listDir = %q, want %q", strings.Join(got, " "), want)
+	}
+}
