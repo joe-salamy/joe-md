@@ -21,6 +21,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/joe-salamy/joe-md/internal/doc"
 	"github.com/joe-salamy/joe-md/internal/natural"
 )
 
@@ -293,6 +294,13 @@ func Run(parent context.Context, req Request) (Result, error) {
 	return finish(out, limit), nil
 }
 
+// docGlob is ripgrep's glob for the files the file menu lists: the extensions
+// joe-md reads, from one list shared with the menu. args matches it without
+// regard to case, as the menu does, so a README.MD is searched too; ripgrep's
+// own markdown type is no use here, since it omits some of these extensions
+// and type globs are case-sensitive.
+var docGlob = "*.{" + strings.Join(doc.DocExts(), ",") + "}"
+
 // args are ripgrep's options for searching the scope. Ignored files are
 // always searched: the file menu lists them, so a cross-file search must
 // cover them too (an explicit file path bypasses ignores anyway). Hidden
@@ -307,10 +315,10 @@ func args(req Request) []string {
 	}
 	out := []string{caseArg, "--no-ignore"}
 	if req.Scope != File && req.Scope != Open {
-		// ripgrep's markdown type omits the extensions the file menu also
-		// treats as markdown; add a type for them, and search plain text
-		// too, so a dir/repo search sees the files the menu lists.
-		out = append(out, "--type-add", "joemd:*.mdtext", "--type-add", "joemd:*.mdtxt", "-t", "markdown", "-t", "joemd", "-t", "txt")
+		// --glob-case-insensitive applies to the exclusions below too, so a
+		// search.exclude pattern matches regardless of case, like the
+		// extensions here.
+		out = append(out, "--glob-case-insensitive", "-g", docGlob)
 	}
 	for _, e := range req.Exclude {
 		out = append(out, "-g", "!"+e)

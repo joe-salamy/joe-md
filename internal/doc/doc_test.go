@@ -420,3 +420,40 @@ func TestPlainWrapFitsExactly(t *testing.T) {
 		t.Errorf("lines %q", r.Lines)
 	}
 }
+
+// The extensions the menu lists and a cross-file search covers come from one
+// list, and case does not decide whether a file is one joe-md reads.
+func TestDocExtensions(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		markdown  bool
+		plainText bool
+	}{
+		{"README.MD", true, false},
+		{"notes.mdx", true, false},
+		{"a.MDTXT", true, false},
+		{"x.Markdown", true, false},
+		{"plain.TXT", false, true},
+		{"prog.go", false, false},
+		{"", false, false},
+		{"md", false, false},
+	} {
+		if got := IsMarkdown(tc.name); got != tc.markdown {
+			t.Errorf("IsMarkdown(%q) = %v, want %v", tc.name, got, tc.markdown)
+		}
+		if got := IsPlainText(tc.name); got != tc.plainText {
+			t.Errorf("IsPlainText(%q) = %v, want %v", tc.name, got, tc.plainText)
+		}
+	}
+	exts := DocExts()
+	for _, want := range []string{"md", "markdown", "mdown", "mdwn", "mkd", "mkdn", "mdx", "mdtext", "mdtxt", "txt"} {
+		if !slices.Contains(exts, want) {
+			t.Errorf("DocExts is missing %q: %q", want, exts)
+		}
+	}
+	for _, e := range exts {
+		if e == "" || strings.HasPrefix(e, ".") {
+			t.Errorf("DocExts entry %q: want an extension without its dot", e)
+		}
+	}
+}

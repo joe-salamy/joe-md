@@ -42,8 +42,8 @@ type Search struct {
 	Literal bool         `toml:"literal"`
 	Case    search.Case  `toml:"case"` // ignore, smart or sensitive
 	// Exclude skips these paths in dir/repo/open searches, as gitignore-style
-	// globs (rg -g '!pat'); file searches of an explicitly opened file are
-	// unaffected.
+	// globs (rg -g '!pat'), matched without regard to case; file searches of
+	// an explicitly opened file are unaffected.
 	Exclude []string `toml:"exclude"`
 }
 
@@ -206,7 +206,7 @@ func Template(bindings []Binding) string {
 	fmt.Fprintf(&b, "[search]\n# Where ? starts: file, open, dir or repo. It then remembers the last scope used.\n# scope = %q\n"+
 		"# Match a query as one phrase of plain text, ignoring the spacing and inline\n# markup between its words; false treats it as one regex. ctrl+r toggles it.\n# literal = %t\n"+
 		"# Letter case: ignore (rg -i), smart (rg -S: sensitive if the query has capitals) or sensitive.\n# case = %q\n"+
-		"# Skip these paths in dir/repo/open searches, as gitignore-style globs\n# (write node_modules, not !node_modules: rg -g '!pat'), e.g. node_modules.\n# A file opened explicitly is always searched.\n# exclude = []\n\n",
+		"# Skip these paths in dir/repo/open searches, as gitignore-style globs\n# (write node_modules, not !node_modules: rg -g '!pat'), e.g. node_modules.\n# Case is ignored, as it is for the file extensions searched. A file opened\n# explicitly is always searched.\n# exclude = []\n\n",
 		d.Search.Scope, d.Search.Literal, d.Search.Case)
 	fmt.Fprintf(&b, "[menu]\n# Hide files ignored by git; alt+. toggles.\n# hide_ignored = %t\n# Gray out the names of files ignored by git in the menu; i toggles.\n# dim_ignored = %t\n\n",
 		d.Menu.HideIgnored, d.Menu.DimIgnored)

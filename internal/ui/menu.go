@@ -62,15 +62,8 @@ type entry struct {
 	doc     bool // a markdown or plain-text file, listed by default
 }
 
-var markdownExts = map[string]bool{
-	".md": true, ".markdown": true, ".mdown": true, ".mdwn": true, ".mkd": true,
-	".mkdn": true, ".mdx": true, ".mdtext": true, ".mdtxt": true,
-}
-
 // isDoc reports whether the file is one joe-md reads: markdown or plain text.
-func isDoc(name string) bool {
-	return markdownExts[strings.ToLower(filepath.Ext(name))] || doc.IsPlainText(name)
-}
+func isDoc(name string) bool { return doc.IsMarkdown(name) || doc.IsPlainText(name) }
 
 // openMenu pops the menu up at dir with the cursor on the entry named sel.
 func (a *App) openMenu(dir, sel string) tea.Cmd {

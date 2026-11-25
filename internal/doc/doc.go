@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -78,10 +79,36 @@ var ErrBinary = errors.New("not a text file")
 // ErrNotFile is Load's error for a path that isn't a regular file.
 var ErrNotFile = errors.New("not a regular file")
 
+// markdownExts are the extensions read as markdown, lower case.
+var markdownExts = []string{
+	".md", ".markdown", ".mdown", ".mdwn", ".mkd", ".mkdn", ".mdx", ".mdtext", ".mdtxt",
+}
+
+// plainExt is the extension of a plain-text file, which is read as written.
+const plainExt = ".txt"
+
+// IsMarkdown reports whether the file name is markdown, by extension. Case is
+// ignored, as in the file menu.
+func IsMarkdown(name string) bool {
+	return slices.Contains(markdownExts, strings.ToLower(filepath.Ext(name)))
+}
+
 // IsPlainText reports whether the file name is a plain-text file, which is
 // shown as written rather than rendered as markdown: its line breaks, and
 // characters like * and #, mean nothing to markdown.
-func IsPlainText(name string) bool { return strings.EqualFold(filepath.Ext(name), ".txt") }
+func IsPlainText(name string) bool { return strings.EqualFold(filepath.Ext(name), plainExt) }
+
+// DocExts returns the extensions of the files joe-md reads, without the dot:
+// markdown's and plain text's. The file menu lists these files and a
+// cross-file search covers them, so both work from this one list, whatever
+// the case of a name. It returns a new slice.
+func DocExts() []string {
+	out := make([]string, 0, len(markdownExts)+1)
+	for _, e := range markdownExts {
+		out = append(out, e[1:])
+	}
+	return append(out, plainExt[1:])
+}
 
 // Load reads and parses the file at path, as markdown or, for a plain-text
 // file, as plain text. The doc's path is absolute, so file identity, display

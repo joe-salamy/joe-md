@@ -287,26 +287,30 @@ func TestRunExcludeGlobs(t *testing.T) {
 	}
 	write("keep.md", "the lawyer rested\n")
 	write(filepath.Join("skipme", "drop.md"), "the lawyer rested\n")
+	// Exclusion globs match without regard to case, as the extensions
+	// searched do.
+	write(filepath.Join("SKIPME", "drop.md"), "the lawyer rested\n")
 	res, err := Run(context.Background(), Request{Query: "lawyer", Scope: Dir, Root: dir, Exclude: []string{"skipme"}})
 	if err != nil || len(res.Matches) != 1 || res.Matches[0].Path != filepath.Join(dir, "keep.md") {
 		t.Fatalf("excluded dir still searched: %+v %v", res, err)
 	}
 	// An explicit file path bypasses globs, like ignores: a file search
 	// always covers the opened file.
-	res, err = Run(context.Background(), Request{Query: "lawyer", Scope: File, Root: filepath.Join(dir, "skipme", "drop.md"), Exclude: []string{"skipme"}})
+	res, err = Run(context.Background(), Request{Query: "lawyer", Scope: File, Root: filepath.Join(dir, "SKIPME", "drop.md"), Exclude: []string{"skipme"}})
 	if err != nil || len(res.Matches) != 1 {
 		t.Fatalf("file search of an excluded file: %+v %v", res, err)
 	}
 }
 
-// The menu treats .mdtext and .mdtxt as markdown, and lists .txt files; a
-// dir search must cover them too.
+// The menu lists markdown and .txt files whatever the case of their names, so
+// a dir search must cover them too, including the extensions ripgrep's own
+// markdown type omits.
 func TestRunSearchesMenuFiles(t *testing.T) {
 	if _, err := exec.LookPath("rg"); err != nil {
 		t.Skip("rg not installed")
 	}
 	dir := t.TempDir()
-	for name := range map[string]bool{"a.md": true, "b.mdtxt": true, "c.mdtext": true, "d.txt": true, "e.json": true} {
+	for _, name := range []string{"a.md", "b.mdtxt", "c.mdtext", "d.txt", "e.json", "f.MD", "g.TXT", "h.Mdx"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte("needle\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -315,7 +319,7 @@ func TestRunSearchesMenuFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Files != 4 || len(res.Matches) != 4 {
+	if res.Files != 7 || len(res.Matches) != 7 {
 		t.Fatalf("menu extensions: %+v", res)
 	}
 }
