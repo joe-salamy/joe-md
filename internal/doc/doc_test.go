@@ -401,3 +401,16 @@ func TestPlainText(t *testing.T) {
 		t.Fatalf("last line at %d", r.SourceToRendered(d, 5))
 	}
 }
+
+// A plain line that just fits is left whole, and a longer one wraps at words.
+func TestPlainWrapFitsExactly(t *testing.T) {
+	d := ParsePlain([]byte("ten chars.\nlonger than ten characters here\n"))
+	r, err := NewRenderer("notty").Render(d, 14) // a 10-cell wrap width
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"", "  ten chars.", "  longer", "  than ten", "  characters", "  here", ""}
+	if !slices.Equal(r.Lines, want) {
+		t.Errorf("lines %q", r.Lines)
+	}
+}

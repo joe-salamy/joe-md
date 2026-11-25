@@ -193,8 +193,16 @@ func renderPlain(d *Doc, width int) *Rendered {
 	out := &Rendered{Lines: make([]string, 1, len(d.Blocks)+2), spans: make([]span, len(d.Blocks))}
 	for i, b := range d.Blocks {
 		s := span{RenStart: len(out.Lines)}
-		for l := range strings.SplitSeq(ansi.Wrap(expandTabs(b.Text), limit, ""), "\n") {
-			out.Lines = append(out.Lines, plainMargin+l)
+		for line := range strings.SplitSeq(expandTabs(b.Text), "\n") {
+			// Wrapping copies the line, and a rune is never narrower than
+			// its bytes are long, so a short line needs no wrapping.
+			if len(line) <= limit {
+				out.Lines = append(out.Lines, plainMargin+line)
+				continue
+			}
+			for l := range strings.SplitSeq(ansi.Wrap(line, limit, ""), "\n") {
+				out.Lines = append(out.Lines, plainMargin+l)
+			}
 		}
 		s.RenEnd = len(out.Lines)
 		out.spans[i] = s
