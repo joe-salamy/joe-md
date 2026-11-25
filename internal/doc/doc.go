@@ -72,10 +72,6 @@ func (d *Doc) SameContent(o *Doc) bool {
 	return bytes.Equal(d.Source, o.Source)
 }
 
-// ref is a link reference definition: its label, normalised as normLabel
-// does, and its source text.
-type ref struct{ label, text string }
-
 // ErrBinary is Load's error for a file that isn't text.
 var ErrBinary = errors.New("not a text file")
 
@@ -159,7 +155,7 @@ func Parse(orig []byte) *Doc {
 		node ast.Node
 	}
 	var starts []start
-	var refs []ref
+	refs := map[string]string{} // normalised label -> definition text
 	refLine := map[int]bool{}
 	for n := root.FirstChild(); n != nil; n = n.NextSibling() {
 		if n.Pos() < 0 {
@@ -172,7 +168,9 @@ func Parse(orig []byte) *Doc {
 				end = lineOf(nx.Pos())
 			}
 			label := normLabel(string(n.(*ast.LinkReferenceDefinition).Label))
-			refs = append(refs, ref{label, joinLines(lines, l, end)})
+			if _, ok := refs[label]; !ok { // the first definition of a label wins
+				refs[label] = joinLines(lines, l, end)
+			}
 			for i := l; i < end; i++ {
 				refLine[i] = true
 			}
@@ -299,16 +297,28 @@ func (d *Doc) renderText(i int) string {
 // uses, unless it holds them already (the definitions after a block are in
 // its text). Leaving out the rest keeps a block's text, and so its place in
 // the render cache, the same when an unrelated definition changes.
-func withRefs(text string, refs []ref) string {
-	if len(refs) == 0 {
+//
+// It scans the block's own bracket groups instead of every definition, so a
+// document with a long reference list stays linear to parse.
+func withRefs(text string, refs map[string]string) string {
+	if len(refs) == 0 || !strings.Contains(text, "[") {
 		return text
 	}
-	norm := normLabel(text)
 	var used []string
-	for _, r := range refs {
-		if strings.Contains(norm, "["+r.label+"]") && !strings.Contains(text, r.text) {
-			used = append(used, strings.TrimSuffix(r.text, "\n"))
+	for i := 0; i < len(text); {
+		j := strings.IndexByte(text[i:], '[')
+		if j < 0 {
+			break
 		}
+		start := i + j + 1
+		k := strings.IndexByte(text[start:], ']')
+		if k < 0 {
+			break
+		}
+		if def, ok := refs[normLabel(text[start:start+k])]; ok && !strings.Contains(text, def) {
+			used = append(used, strings.TrimSuffix(def, "\n"))
+		}
+		i = start + k + 1
 	}
 	if len(used) == 0 {
 		return text

@@ -3,6 +3,7 @@ package doc
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -200,6 +201,27 @@ func TestRefsOnlyWhereUsed(t *testing.T) {
 	}
 	if d.renderText(1) != d.Blocks[1].Text {
 		t.Errorf("block not using the ref got it: %q", d.renderText(1))
+	}
+}
+
+// A long reference list is matched by scanning the block, not the list, so a
+// late definition still resolves and one a block already holds is not added
+// twice.
+func TestManyRefs(t *testing.T) {
+	var sb strings.Builder
+	for i := range 2000 {
+		fmt.Fprintf(&sb, "[ref%d]: http://example.com/%d\n", i, i)
+	}
+	sb.WriteString("\nuses [last][ref1999]\n\nuses [first][Ref0]\n\n# H\n[x]: http://x\n\nalso [x]\n")
+	d := Parse([]byte(sb.String()))
+	if got := d.renderText(0); !strings.Contains(got, "http://example.com/1999") {
+		t.Errorf("late ref not appended: %q", got)
+	}
+	if got := d.renderText(1); !strings.Contains(got, "http://example.com/0\n") {
+		t.Errorf("case-insensitive ref not appended: %q", got)
+	}
+	if got := d.renderText(3); strings.Count(got, "http://x") != 1 {
+		t.Errorf("definition a block holds was added again: %q", got)
 	}
 }
 
