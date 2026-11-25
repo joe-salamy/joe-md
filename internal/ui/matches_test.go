@@ -358,3 +358,27 @@ func TestReindexClampsCurrent(t *testing.T) {
 		t.Fatalf("MatchPos = %d/%d", cur, total)
 	}
 }
+
+// The plain text of a line is exactly what Strip gives: the fast path for
+// lines with no escape sequence in them must agree with it.
+func TestPlainLineMatchesStrip(t *testing.T) {
+	for _, s := range []string{
+		"", "plain text", "a\x01b", "tab\there", "sty\x1b[31mle\x1b[0m",
+		"日本 語", "tail\x1b", "\x1b]0;title\x07x", "nbsp\u00a0here",
+	} {
+		if got, want := plainLine(s), ansi.Strip(s); got != want {
+			t.Errorf("plainLine(%q) = %q, want %q", s, got, want)
+		}
+	}
+}
+
+// colOf counts cells, not bytes: an ASCII line is its byte offset, and a line
+// with wide characters needs the width rules from the first of them on.
+func TestColOf(t *testing.T) {
+	const line = "ab日本cd" // a b 日 本 c d: 1 1 2 2 1 1 cells
+	for b, want := range map[int]int{0: 0, 1: 1, 2: 2, 3: 2, 5: 4, 8: 6, 9: 7, 10: 8, 42: 8} {
+		if got := colOf(line, b); got != want {
+			t.Errorf("colOf(%q, %d) = %d, want %d", line, b, got, want)
+		}
+	}
+}
