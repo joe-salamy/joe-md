@@ -253,9 +253,16 @@ func (a *App) layout() {
 // syncTOC points the sidebar cursor at the section being read, unless the
 // user is driving the sidebar.
 func (a *App) syncTOC() {
-	if a.focus == focusDoc && a.pane != nil {
-		a.toc.Select(a.pane.doc, a.pane.CurrentHeading(), a.bodyHeight())
+	if a.pane == nil {
+		return
 	}
+	if a.focus != focusDoc {
+		// The sidebar has the keyboard: only keep its cursor and scroll
+		// position inside the headings, which a reload can shorten.
+		a.toc.clamp(len(a.pane.doc.Headings), max(a.bodyHeight()-tocHeader, 1))
+		return
+	}
+	a.toc.Select(a.pane.doc, a.pane.CurrentHeading(), a.bodyHeight())
 }
 
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

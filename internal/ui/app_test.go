@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image/color"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -74,5 +75,36 @@ func TestViewFitsTerminal(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// A document reload can cut the headings a focused sidebar is showing: the
+// cursor and its scroll position come back inside the new list.
+func TestTOCClampAfterReload(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.md")
+	big := "# one\n\n## two\n\n## three\n\n## four\n\n## five\n"
+	if err := os.WriteFile(path, []byte(big), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := newTestApp(t, path)
+	press(a, "tab") // the sidebar
+	press(a, "G")   // the last heading
+	if a.focus != focusTOC || a.toc.cursor != len(a.pane.doc.Headings)-1 {
+		t.Fatalf("cursor %d of %d headings", a.toc.cursor, len(a.pane.doc.Headings))
+	}
+	if err := os.WriteFile(path, []byte("# only\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	press(a, "r")
+	if n := len(a.pane.doc.Headings); a.toc.cursor >= n {
+		t.Fatalf("cursor %d is past the %d headings left", a.toc.cursor, n)
+	}
+	if a.toc.offset != 0 {
+		t.Fatalf("scroll offset %d is past the end", a.toc.offset)
+	}
+	press(a, "j") // and the next key still works
+	if a.toc.cursor != 0 {
+		t.Fatalf("cursor %d after j", a.toc.cursor)
 	}
 }

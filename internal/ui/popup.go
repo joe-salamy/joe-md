@@ -28,6 +28,14 @@ func (l *list) selectIdx(i, n, rows int) {
 	}
 }
 
+// clamp brings the cursor and the scroll position back inside a list of n
+// items shown rows at a time, when it shrank under them: a reload can cut the
+// headings the sidebar is showing.
+func (l *list) clamp(n, rows int) {
+	l.offset = max(0, min(l.offset, n-rows))
+	l.selectIdx(l.cursor, n, rows)
+}
+
 // scroll moves the view d items without moving the cursor.
 func (l *list) scroll(d, n, rows int) {
 	l.offset = max(0, min(l.offset+d, n-rows))
