@@ -55,11 +55,19 @@ const minWrap = 10
 
 func wrapWidth(width, maxWrap int) int { return max(min(width, maxWrap), minWrap) }
 
+// box gives the pane its size on screen without rendering: a resize or a
+// border drag in flight moves the panes at once and renders once it settles
+// (see App.place), and a rendering that lags its box still fills exactly the
+// cells the tab stitches together.
+func (p *Pane) box(width, height int) {
+	p.width, p.height = width, height
+}
+
 // Layout re-renders the document for a new size, keeping the same source line
 // at the top of the pane. If the wrap width is unchanged the rendering is too,
 // so the view stays exactly where it was.
 func (p *Pane) Layout(r *doc.Renderer, width, height, maxWrap int) error {
-	p.width, p.height = width, height
+	p.box(width, height)
 	wrap := wrapWidth(width, maxWrap)
 	if p.view != nil && wrap == p.wrap {
 		return nil

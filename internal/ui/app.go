@@ -254,8 +254,8 @@ func (a *App) layout() {
 // place gives the current tab's panes their boxes on screen without rendering
 // their documents: a resize or a border drag moves them on every event, and
 // rendering at each intermediate size would cost far more than it shows (see
-// deferLayout). Sizing the panes here keeps their last rendering filling
-// exactly the cells View stitches together.
+// deferLayout). Sizing the panes keeps their last rendering filling exactly
+// the cells View stitches together.
 func (a *App) place() bool {
 	a.tocWOK = false
 	if a.pane == nil || a.width == 0 {
@@ -269,7 +269,7 @@ func (a *App) place() bool {
 		status = 1 // each pane's own status row
 	}
 	for _, l := range t.leaves() {
-		l.pane.width, l.pane.height = l.w, max(l.h-status, 1)
+		l.pane.box(l.w, max(l.h-status, 1))
 	}
 	return true
 }
