@@ -411,10 +411,6 @@ func (a *App) syncResults() {
 	}
 }
 
-// killSearch is esc: the running search stops, the results list is dropped,
-// and no pane highlights matches any more. Killed means killed: bumping the
-// sequence drops a search that is still computing, so its matches can never
-// land after the highlights are gone.
 // searchActive reports whether there is a search for killSearch to kill: one
 // running, a results list, or highlights in any pane.
 func (a *App) searchActive() bool {
@@ -429,6 +425,10 @@ func (a *App) searchActive() bool {
 	return false
 }
 
+// killSearch is esc: the running search stops, the results list is dropped,
+// and no pane highlights matches any more. Killed means killed: bumping the
+// sequence drops a search that is still computing, so its matches can never
+// land after the highlights are gone.
 func (a *App) killSearch() {
 	if a.cancel != nil {
 		a.cancel()
