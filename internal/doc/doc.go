@@ -133,7 +133,7 @@ var md = goldmark.New(goldmark.WithExtensions(extension.GFM, extension.Definitio
 // Parse splits src into top-level blocks.
 func Parse(orig []byte) *Doc {
 	src := sanitizeControls(blankFrontMatter(orig))
-	lineStarts := []int{0}
+	lineStarts := []int{0} // the offset of each line
 	for i, c := range src {
 		if c == '\n' && i+1 < len(src) {
 			lineStarts = append(lineStarts, i+1)
@@ -142,9 +142,8 @@ func Parse(orig []byte) *Doc {
 	lineOf := func(pos int) int {
 		return sort.Search(len(lineStarts), func(i int) bool { return lineStarts[i] > pos }) - 1
 	}
-	lines := bytes.Split(bytes.TrimSuffix(src, []byte("\n")), []byte("\n"))
 
-	d := &Doc{Source: orig, Lines: len(lines)} // Source keeps the front matter
+	d := &Doc{Source: orig, Lines: len(lineStarts)} // Source keeps the front matter
 	root := md.Parser().Parse(text.NewReader(src))
 
 	// Collect block start lines. Link reference definitions render to
@@ -169,7 +168,7 @@ func Parse(orig []byte) *Doc {
 			}
 			label := normLabel(string(n.(*ast.LinkReferenceDefinition).Label))
 			if _, ok := refs[label]; !ok { // the first definition of a label wins
-				refs[label] = joinLines(lines, l, end)
+				refs[label] = linesText(src, lineStarts, l, end)
 			}
 			for i := l; i < end; i++ {
 				refLine[i] = true
@@ -200,10 +199,10 @@ func Parse(orig []byte) *Doc {
 			b.Next = starts[i+1].line
 		}
 		b.SrcEnd = b.Next
-		for b.SrcEnd > b.SrcStart+1 && (refLine[b.SrcEnd-1] || len(bytes.TrimSpace(lines[b.SrcEnd-1])) == 0) {
+		for b.SrcEnd > b.SrcStart+1 && (refLine[b.SrcEnd-1] || len(bytes.TrimSpace(lineBytes(src, lineStarts, b.SrcEnd-1))) == 0) {
 			b.SrcEnd--
 		}
-		b.Text = joinLines(lines, s.line, b.Next)
+		b.Text = linesText(src, lineStarts, s.line, b.Next)
 		if h, ok := s.node.(*ast.Heading); ok {
 			d.Headings = append(d.Headings, Heading{
 				Level: h.Level,
@@ -334,8 +333,27 @@ func normLabel(s string) string {
 	return bracketSpace.Replace(strings.ToLower(strings.Join(strings.Fields(s), " ")))
 }
 
-func joinLines(lines [][]byte, from, to int) string {
-	return string(bytes.Join(lines[from:to], []byte("\n"))) + "\n"
+// lineBytes returns line i of src, newline included.
+func lineBytes(src []byte, lineStarts []int, i int) []byte {
+	end := len(src)
+	if i+1 < len(lineStarts) {
+		end = lineStarts[i+1]
+	}
+	return src[lineStarts[i]:end]
+}
+
+// linesText returns lines [from, to) of src as one newline-terminated string,
+// the form glamour is given.
+func linesText(src []byte, lineStarts []int, from, to int) string {
+	end := len(src)
+	if to < len(lineStarts) {
+		end = lineStarts[to]
+	}
+	text := src[lineStarts[from]:end]
+	if len(text) == 0 || text[len(text)-1] != '\n' {
+		return string(text) + "\n"
+	}
+	return string(text)
 }
 
 // yamlKey is the first line of front matter: a YAML key, or a comment.
